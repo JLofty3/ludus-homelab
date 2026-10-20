@@ -395,6 +395,41 @@ if ! grep -qs 'ludus-lab/env' /root/.bashrc; then
 fi
 
 # --------------------------------------------------------------------------
+# Let the web GUI trigger an update with one click. The web service (unprivileged)
+# gets to start ONE root systemd unit - nothing else - via a scoped sudoers rule
+# that is syntax-checked before install. The unit runs in its own cgroup, so it
+# survives the web service restart that the update performs.
+LAB_UPDATE_WEB=0
+LAB_UPDATE_SYSCTL="$(command -v systemctl || true)"
+if [[ -n "$LAB_UPDATE_SYSCTL" ]]; then
+  cat > /etc/systemd/system/ludus-lab-update.service <<UNIT
+[Unit]
+Description=Pull and apply the latest lab builder version
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/lab-update
+UNIT
+  systemctl daemon-reload || true
+  SUDOERS=/etc/sudoers.d/ludus-lab-update
+  printf '%s ALL=(root) NOPASSWD: %s start --no-block ludus-lab-update.service\n' "$WEB_USER" "$LAB_UPDATE_SYSCTL" > "$SUDOERS.tmp"
+  if visudo -cf "$SUDOERS.tmp" >/dev/null 2>&1; then
+    install -m 440 -o root -g root "$SUDOERS.tmp" "$SUDOERS"
+    rm -f "$SUDOERS.tmp"
+    LAB_UPDATE_WEB=1
+    ok "Web GUI can trigger updates (scoped to the update command only)"
+  else
+    rm -f "$SUDOERS.tmp"
+    warn "Couldn't install the update sudoers rule; the GUI will show the command instead."
+  fi
+fi
+# Record the web-update setting for the GUI (the env file is rewritten each run).
+{ printf "LAB_UPDATE_WEB='%s'\n" "$LAB_UPDATE_WEB"
+  printf "LAB_UPDATE_SYSCTL='%s'\n" "$LAB_UPDATE_SYSCTL"; } >> "$WEB_ETC/env"
+systemctl restart ludus-lab-web >/dev/null 2>&1 || true   # pick up the new env
+
+# --------------------------------------------------------------------------
 say "Checking VM templates"
 mapfile -t missing < <(ludus templates list --json 2>/dev/null | python3 -c '
 import json, sys

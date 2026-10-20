@@ -1132,6 +1132,58 @@
         "Destroys every lab and every built template - a clean slate. Templates will need building again from scratch (hours)."));
   }
 
+  // Kick off a web update, then watch the version until the node comes back.
+  async function startUpdate(btn, status, fromVersion) {
+    btn.disabled = true;
+    btn.replaceChildren(h("span", { class: "spinner", "aria-hidden": "true" }), "Updating...");
+    status.classList.remove("bad");
+    try {
+      const r = await api("POST", "/api/update", {});
+      status.textContent = r.message || "Update started.";
+    } catch (e) {
+      status.classList.add("bad");
+      status.textContent = e.message;
+      btn.disabled = false;
+      btn.replaceChildren(icon("download"), " Update now");
+      return;
+    }
+    // Poll /api/updates. The web service stays up serving the old version for
+    // most of the run, then restarts briefly at the end. A failed poll after
+    // we've been waiting means that restart; a changed version means success.
+    let tries = 0, sawRestart = false;
+    const maxTries = 120; // ~6 minutes at 3s
+    const timer = setInterval(async () => {
+      tries += 1;
+      if (tries === 30 && !sawRestart) {
+        status.textContent = "Still working — fetching updates and re-applying the config. This can take a few minutes.";
+      }
+      try {
+        const now = await api("GET", "/api/updates");
+        if (now && now.version && now.version !== fromVersion) {
+          clearInterval(timer);
+          status.textContent = `Updated to v${now.version}. Reloading...`;
+          setTimeout(() => location.reload(), 1200);
+          return;
+        }
+        if (sawRestart) {
+          clearInterval(timer);
+          status.textContent = `Update finished — you're on the latest version (v${(now && now.version) || fromVersion}).`;
+          btn.disabled = false;
+          btn.replaceChildren(icon("download"), " Update now");
+          return;
+        }
+      } catch {
+        sawRestart = true; // service is restarting as the update lands
+      }
+      if (tries >= maxTries) {
+        clearInterval(timer);
+        status.textContent = "This is taking longer than expected. Check `sudo systemctl status ludus-lab-update` on the node, then reload this page.";
+        btn.disabled = false;
+        btn.replaceChildren(icon("download"), " Update now");
+      }
+    }, 3000);
+  }
+
   async function viewUpdates() {
     const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
     shell("updates", h("div", { class: "detail" }, h("h1", {}, icon("download"), " Updates"),
@@ -1152,9 +1204,24 @@
       rows.push(h("div", { class: "notice ok", text: `You're on the latest version (${u.latest}).` }));
     }
     if (u.git) {
-      rows.push(h("h3", { text: "Update" }),
-        h("p", { text: "On the node, run this — it pulls the latest and re-applies everything. It's safe to run any time and never touches running labs:" }),
-        cmdLine(u.command));
+      rows.push(h("h3", { text: "Update" }));
+      if (u.web_update) {
+        const status = h("p", { class: "help update-status" });
+        const btn = h("button", { class: "btn btn-build", type: "button" }, icon("download"), " Update now");
+        btn.addEventListener("click", () => startUpdate(btn, status, u.version));
+        rows.push(
+          h("p", { text: "Pull the latest and re-apply it. It's safe to run any time and never touches running labs — it just updates the builder, catalogue and launcher:" }),
+          h("div", { class: "toolbar" }, btn),
+          status,
+          h("details", { class: "cmd-fallback" },
+            h("summary", { class: "help", text: "Prefer the command line?" }),
+            h("p", { class: "help", text: "You can also run this on the node:" }),
+            cmdLine(u.command)));
+      } else {
+        rows.push(
+          h("p", { text: "On the node, run this — it pulls the latest and re-applies everything. It's safe to run any time and never touches running labs:" }),
+          cmdLine(u.command));
+      }
       if (u.repo) rows.push(h("p", { class: "help", text: `Updates come from ${u.repo}.` }));
     } else {
       rows.push(h("h3", { text: "Turn on one-command updates" }),

@@ -23,8 +23,10 @@ import mimetypes
 import os
 import re
 import secrets
+import shutil
 import socket
 import ssl
+import subprocess
 import sys
 import threading
 import time
@@ -55,6 +57,8 @@ PROXMOX_TOKEN_SECRET = os.environ.get("PROXMOX_TOKEN_SECRET", "")
 LAB_UPDATE_DIR = os.environ.get("LAB_UPDATE_DIR", "")
 LAB_UPDATE_GIT = os.environ.get("LAB_UPDATE_GIT") == "1"
 LAB_UPDATE_REPO = os.environ.get("LAB_UPDATE_REPO", "")
+LAB_UPDATE_WEB = os.environ.get("LAB_UPDATE_WEB") == "1"
+LAB_UPDATE_SYSCTL = os.environ.get("LAB_UPDATE_SYSCTL", "")
 TMP_DIR = os.environ.get("LAB_WEB_TMP", "/var/lib/ludus-lab/tmp")
 SESSION_TTL = 12 * 3600
 MAX_BODY = 64 * 1024
@@ -336,13 +340,32 @@ def _latest_remote_version():
 
 def update_info():
     info = {"version": core.VERSION, "git": LAB_UPDATE_GIT, "command": "sudo lab-update",
-            "repo": LAB_UPDATE_REPO or None, "latest": None, "newer": False}
+            "repo": LAB_UPDATE_REPO or None, "latest": None, "newer": False,
+            "web_update": LAB_UPDATE_WEB and LAB_UPDATE_GIT}
     if LAB_UPDATE_GIT and LAB_UPDATE_REPO:
         latest = CACHE.get("update-latest", 900, _latest_remote_version)
         if latest:
             info["latest"] = latest
             info["newer"] = _parse_version(latest) > _parse_version(core.VERSION)
     return info
+
+
+def trigger_update():
+    """Start the scoped root updater unit. The web user can start only this one
+    unit (enforced by the sudoers rule setup.sh installs) - nothing else."""
+    if not (LAB_UPDATE_WEB and LAB_UPDATE_GIT):
+        raise ApiError(400, "Web updates aren't enabled here. Run `sudo lab-update` on the node, "
+                            "or re-run setup.sh to turn this on.")
+    sysctl = LAB_UPDATE_SYSCTL or shutil.which("systemctl") or "systemctl"
+    # --no-block: the unit is Type=oneshot, so a plain `start` would wait for the
+    # whole update to finish (minutes). --no-block queues it and returns at once.
+    # The sudoers rule setup.sh installs permits exactly this argument vector.
+    try:
+        subprocess.run(["sudo", "-n", sysctl, "start", "--no-block", "ludus-lab-update.service"],
+                       check=True, timeout=30, capture_output=True)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        raise ApiError(502, "Couldn't start the update. Run `sudo lab-update` on the node instead.")
+    return {"message": "Update started. This page reloads once it's back on the new version.", "started": True}
 
 
 # --------------------------------------------------------------------------
@@ -944,6 +967,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ("POST", r"/api/templates/build", "templates_build", True),
         ("GET", r"/api/wireguard", "wireguard", True),
         ("GET", r"/api/updates", "updates", True),
+        ("POST", r"/api/update", "update", True),
         ("POST", r"/api/refresh", "refresh", True),
         ("POST", r"/api/reset", "reset", True),
     ]
@@ -1034,6 +1058,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def api_updates(self, user):
         self._json(200, update_info())
+
+    def api_update(self, user):
+        self._json(200, trigger_update())
 
     def api_refresh(self, user):
         self._json(200, refresh_sources())

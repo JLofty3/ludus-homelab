@@ -357,9 +357,22 @@ sudo lab-update
 ```
 
 It pulls the latest version and re-runs `setup.sh`, which is safe to run any
-time and never touches running labs. The GUI's **Updates** page shows your
-current version and the same command, and has a box for sending feature
-requests.
+time and never touches running labs.
+
+**One-click updates from the GUI.** The **Updates** page shows your current
+version. Once the install is Git-based (set up as below), that page also gets
+an **Update now** button — click it and the node pulls the latest and
+re-applies it, then the page reloads on the new version. No SSH, no commands.
+
+The button is wired up with a deliberately tight privilege boundary. The web
+service itself runs unprivileged and can't touch the system. `setup.sh`
+installs a one-line `sudoers` rule (syntax-checked with `visudo` before it's
+written) that lets the web user start exactly one thing — the root
+`ludus-lab-update.service` unit — and nothing else: no other units, no extra
+arguments, no shell. That unit runs the same root-owned `lab-update` script
+you'd run by hand. If the rule can't be installed for any reason, the page just
+falls back to showing the `sudo lab-update` command. The **Updates** page also
+has a box for sending feature requests.
 
 **Making the repo** (one time, free): create an empty private repo on GitHub
 (call it `ludus-homelab`). On your computer, in the folder you unpacked:

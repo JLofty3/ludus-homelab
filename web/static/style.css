@@ -456,3 +456,9 @@ details[open] > summary::before { transform: rotate(90deg); }
 .danger-text b { font-weight: 600; }
 .danger-text .help { margin-top: 2px; }
 .danger-confirm { min-width: 220px; flex: 1; }
+
+.update-status { margin-top: 10px; min-height: 1.2em; }
+.update-status.bad { color: var(--bad); }
+.cmd-fallback { margin-top: 14px; }
+.cmd-fallback summary { cursor: pointer; }
+.cmd-fallback p { margin: 8px 0 6px; }
