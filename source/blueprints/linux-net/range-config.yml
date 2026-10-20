@@ -1,0 +1,92 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+#
+# Linux networking lab: three segments behind the Ludus router, which acts as the
+# firewall between them.
+#   VLAN 10  DMZ        10.<range>.10.0/24   web01 (nginx)
+#   VLAN 20  Internal   10.<range>.20.0/24   app01, db01 (MariaDB)
+#   VLAN 30  Management 10.<range>.30.0/24   jump01
+#
+# Firewall: management can reach everything, the DMZ web servers can reach the
+# app servers on tcp/8080, the internal VLAN can reach the web servers on
+# tcp/80, and ping works everywhere. Everything else between VLANs is rejected.
+#
+# The `lab` launcher can change the number of servers, the Debian version, the
+# firewall mode and the RAM per server. As-is this needs about 10 GB RAM.
+
+ludus:
+  - vm_name: "{{ range_id }}-web01"
+    hostname: web01
+    template: debian-13-x64-server-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 2
+    ram_min_gb: 1
+    cpus: 2
+    linux:
+      packages: [nginx, curl, bind9-dnsutils, tcpdump, traceroute, mtr-tiny, nftables]
+
+  - vm_name: "{{ range_id }}-app01"
+    hostname: app01
+    template: debian-13-x64-server-template
+    vlan: 20
+    ip_last_octet: 10
+    ram_gb: 2
+    ram_min_gb: 1
+    cpus: 2
+    linux:
+      packages: [python3, curl, bind9-dnsutils, tcpdump, traceroute, mtr-tiny, nftables]
+
+  - vm_name: "{{ range_id }}-db01"
+    hostname: db01
+    template: debian-13-x64-server-template
+    vlan: 20
+    ip_last_octet: 20
+    ram_gb: 2
+    ram_min_gb: 1
+    cpus: 2
+    linux:
+      packages: [mariadb-server, curl, bind9-dnsutils, tcpdump, traceroute, mtr-tiny, nftables]
+
+  - vm_name: "{{ range_id }}-jump01"
+    hostname: jump01
+    template: debian-13-x64-server-template
+    vlan: 30
+    ip_last_octet: 10
+    ram_gb: 2
+    ram_min_gb: 1
+    cpus: 2
+    linux:
+      packages: [nmap, curl, bind9-dnsutils, tcpdump, traceroute, mtr-tiny, nftables]
+
+network:
+  inter_vlan_default: REJECT
+  rules:
+    - name: Ping allowed between all VLANs
+      vlan_src: all
+      vlan_dst: all
+      protocol: icmp
+      ports: all
+      action: ACCEPT
+    - name: Management VLAN can reach everything
+      vlan_src: 30
+      vlan_dst: all
+      protocol: all
+      ports: all
+      action: ACCEPT
+    - name: DMZ web servers to app servers on 8080
+      vlan_src: 10
+      vlan_dst: 20
+      ip_last_octet_dst: 10-19
+      protocol: tcp
+      ports: 8080
+      action: ACCEPT
+    - name: Internal VLAN to DMZ web servers on 80
+      vlan_src: 20
+      vlan_dst: 10
+      ip_last_octet_dst: 10-19
+      protocol: tcp
+      ports: 80
+      action: ACCEPT
+
+defaults:
+  timezone: Europe/London

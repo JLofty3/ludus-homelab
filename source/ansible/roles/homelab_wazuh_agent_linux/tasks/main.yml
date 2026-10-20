@@ -1,0 +1,93 @@
+---
+- name: Find the Wazuh server in this range
+  ansible.builtin.set_fact:
+    homelab_wazuh_manager: "10.{{ range_second_octet }}.{{ item.vlan }}.{{ item.ip_last_octet }}"
+  loop: "{{ ludus }}"
+  loop_control:
+    label: "{{ item.vm_name }}"
+  vars:
+    # Match role names only, not depends_on entries that mention the server role.
+    homelab_role_names: >-
+      {{ (item.roles | default([]) | select('string') | list)
+         + (item.roles | default([]) | reject('string') | map(attribute='name') | list) }}
+  when:
+    - homelab_wazuh_manager | length == 0
+    - item.roles is defined
+    - homelab_role_names | select('search', 'wazuh_server_install') | list | length > 0
+
+- name: Stop if there is no Wazuh server
+  ansible.builtin.fail:
+    msg: "No VM in this range has the wazuh_server_install role, so the agent has nowhere to report."
+  when: homelab_wazuh_manager | length == 0
+
+- name: Install the agent on Debian or Ubuntu
+  when: ansible_os_family == "Debian"
+  block:
+    - name: Install prerequisites
+      ansible.builtin.apt:
+        name:
+          - gnupg
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Download the Wazuh signing key
+      ansible.builtin.get_url:
+        url: "{{ homelab_wazuh_gpg_key_url }}"
+        dest: /usr/share/keyrings/wazuh.asc
+        mode: "0644"
+
+    - name: Convert the key for apt
+      ansible.builtin.command:
+        cmd: gpg --batch --yes --dearmor -o /usr/share/keyrings/wazuh.gpg /usr/share/keyrings/wazuh.asc
+        creates: /usr/share/keyrings/wazuh.gpg
+
+    - name: Add the Wazuh repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/wazuh.gpg] {{ homelab_wazuh_apt_repo }} stable main"
+        filename: wazuh
+        state: present
+        update_cache: true
+
+    - name: Install the Wazuh agent
+      ansible.builtin.apt:
+        name: "wazuh-agent={{ homelab_wazuh_agent_version }}"
+        state: present
+      environment:
+        WAZUH_MANAGER: "{{ homelab_wazuh_manager }}"
+
+    - name: Hold the agent version so upgrades don't overtake the server
+      ansible.builtin.dpkg_selections:
+        name: wazuh-agent
+        selection: hold
+
+- name: Install the agent on Rocky Linux
+  when: ansible_os_family == "RedHat"
+  block:
+    - name: Import the Wazuh signing key
+      ansible.builtin.rpm_key:
+        key: "{{ homelab_wazuh_gpg_key_url }}"
+        state: present
+
+    - name: Add the Wazuh repository
+      ansible.builtin.yum_repository:
+        name: wazuh
+        description: Wazuh repository
+        baseurl: "{{ homelab_wazuh_yum_repo }}"
+        gpgkey: "{{ homelab_wazuh_gpg_key_url }}"
+        gpgcheck: true
+        enabled: true
+
+    - name: Install the Wazuh agent
+      ansible.builtin.dnf:
+        name: "wazuh-agent-{{ homelab_wazuh_agent_version }}"
+        state: present
+      environment:
+        WAZUH_MANAGER: "{{ homelab_wazuh_manager }}"
+
+- name: Start the agent
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    enabled: true
+    state: started
+    daemon_reload: true

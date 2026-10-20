@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# lab-update - pull the latest version of the lab builder and re-run setup.
+# Installed to /usr/local/bin by setup.sh. Safe to run any time; it only
+# updates the launcher, GUI and catalogue, and never touches running labs.
+set -euo pipefail
+
+# setup.sh records the directory it was installed from here. If that's a Git
+# checkout, we pull and re-run setup; otherwise we explain how to switch to Git.
+SRC="__LAB_SRC_DIR__"
+
+red()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+info() { printf '\033[36m%s\033[0m\n' "$*"; }
+
+[[ $EUID -eq 0 ]] || { red "Run this as root (sudo lab-update)."; exit 1; }
+
+if [[ ! -d "$SRC/.git" ]]; then
+  red "This copy wasn't set up from Git, so there's nothing to pull."
+  echo "To switch to one-command updates, see the 'Updating' section of the README:"
+  echo "  install git, clone the repo, and run ./setup.sh from the clone once."
+  exit 1
+fi
+
+command -v git >/dev/null || { red "git isn't installed. Run: apt-get install -y git"; exit 1; }
+
+cd "$SRC"
+before="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+info "Fetching the latest version into $SRC ..."
+git fetch --quiet origin
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+if ! git merge --ff-only "origin/$branch" >/dev/null 2>&1; then
+  red "Couldn't fast-forward (you may have local edits in $SRC)."
+  echo "Stash or discard them, then run lab-update again:  git -C $SRC stash"
+  exit 1
+fi
+after="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+
+if [[ "$before" == "$after" ]]; then
+  info "Already up to date ($after). Nothing to do."
+  exit 0
+fi
+
+info "Updated $before -> $after. Re-running setup..."
+exec ./setup.sh "$@"

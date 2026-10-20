@@ -1,0 +1,11 @@
+---
+# Must not be newer than the Wazuh server. aleemladha.wazuh_server_install
+# installs Wazuh 4.12, so the agent is pinned to 4.12.0.
+homelab_wazuh_agent_version: "4.12.0-1"
+
+# Leave empty to find the VM with the wazuh_server_install role automatically.
+homelab_wazuh_manager: ""
+
+homelab_wazuh_gpg_key_url: https://packages.wazuh.com/key/GPG-KEY-WAZUH
+homelab_wazuh_apt_repo: https://packages.wazuh.com/4.x/apt/
+homelab_wazuh_yum_repo: https://packages.wazuh.com/4.x/yum/

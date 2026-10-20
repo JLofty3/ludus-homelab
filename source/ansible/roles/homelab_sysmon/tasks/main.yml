@@ -1,0 +1,49 @@
+---
+- name: Create the Sysmon folder
+  ansible.windows.win_file:
+    path: "{{ homelab_sysmon_dir }}"
+    state: directory
+
+- name: Download Sysmon from Sysinternals
+  ansible.windows.win_get_url:
+    url: "{{ homelab_sysmon_zip_url }}"
+    dest: "{{ homelab_sysmon_dir }}\\Sysmon.zip"
+  register: homelab_sysmon_zip
+  retries: 3
+  delay: 10
+  until: homelab_sysmon_zip is succeeded
+
+- name: Unpack Sysmon
+  ansible.windows.win_shell: >-
+    Expand-Archive -Path '{{ homelab_sysmon_dir }}\Sysmon.zip'
+    -DestinationPath '{{ homelab_sysmon_dir }}' -Force
+  changed_when: false
+
+- name: Download the Sysmon config
+  block:
+    - name: Download the sysmon-modular config
+      ansible.windows.win_get_url:
+        url: "{{ homelab_sysmon_config_url }}"
+        dest: "{{ homelab_sysmon_dir }}\\sysmonconfig.xml"
+        force: true
+  rescue:
+    - name: Download the fallback config instead
+      ansible.windows.win_get_url:
+        url: "{{ homelab_sysmon_fallback_config_url }}"
+        dest: "{{ homelab_sysmon_dir }}\\sysmonconfig.xml"
+        force: true
+
+- name: Check whether Sysmon is already installed
+  ansible.windows.win_service_info:
+    name: Sysmon64
+  register: homelab_sysmon_service
+
+- name: Install Sysmon
+  ansible.windows.win_command:
+    cmd: '"{{ homelab_sysmon_dir }}\Sysmon64.exe" -accepteula -i "{{ homelab_sysmon_dir }}\sysmonconfig.xml"'
+  when: not homelab_sysmon_service.exists
+
+- name: Apply the config to the existing Sysmon install
+  ansible.windows.win_command:
+    cmd: '"{{ homelab_sysmon_dir }}\Sysmon64.exe" -c "{{ homelab_sysmon_dir }}\sysmonconfig.xml"'
+  when: homelab_sysmon_service.exists

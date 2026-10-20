@@ -1,0 +1,4 @@
+manifest_version: 1
+name: "Homelab Labs"
+description: "Personal lab catalogue: a basic Active Directory domain and a segmented Linux networking lab, sized for a single 64 GB Proxmox node."
+license: MIT

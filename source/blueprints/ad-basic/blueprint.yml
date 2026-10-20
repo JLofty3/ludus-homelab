@@ -1,0 +1,11 @@
+manifest_version: 1
+id: ad-basic
+name: "Basic Active Directory Lab"
+description: "One domain controller, a domain-joined Windows 11 workstation and a Kali box on its own VLAN."
+version: 1.0.0
+tags:
+  - active-directory
+  - windows
+  - homelab
+min_ludus_version: "2.0.0"
+config: range-config.yml

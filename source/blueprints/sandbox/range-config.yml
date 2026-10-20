@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+#
+# Single-VM sandbox: one machine to tinker with, behind the Ludus router so it
+# gets internet, with no domain and no extra network to reason about. The `lab`
+# launcher and the web GUI pick the operating system, size, hostname and which
+# apps to pre-install. As-is this is a small Debian box.
+
+ludus:
+  - vm_name: "{{ range_id }}-sandbox"
+    hostname: sandbox
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 4
+    cpus: 2
+    linux: true
+
+defaults:
+  timezone: Europe/London

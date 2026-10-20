@@ -1,0 +1,39 @@
+---
+homelab_dfir_tools_dir: 'C:\Tools'
+
+# Chocolatey packages. A package that fails to install is reported at the end
+# of the run but does not fail the lab deploy.
+homelab_dfir_choco_packages:
+  - dotnet-9.0-desktopruntime   # needed by Timeline Explorer, Registry Explorer and the other EZ GUI tools
+  - sysinternals
+  - wireshark
+  - 7zip
+  - notepadplusplus
+  - hxd
+  - sqlitebrowser
+  - python3
+
+# Eric Zimmerman's official downloader. It fetches every current tool (.NET 9 builds).
+homelab_dfir_zimmerman_script_url: https://raw.githubusercontent.com/EricZimmerman/Get-ZimmermanTools/master/Get-ZimmermanTools.ps1
+
+# Tools downloaded from their latest GitHub release. The release is looked up
+# on the VM at deploy time, so these stay current without editing the role.
+# The first asset matching a pattern (tried in order, case-insensitive) and not
+# matching `exclude` is used.
+homelab_dfir_github_tools:
+  - name: Hayabusa
+    repo: Yamato-Security/hayabusa
+    patterns: ['win-x64\.zip$', 'win.*x64.*\.zip$']
+    exclude: 'live|response|arm|aarch'
+  - name: Chainsaw
+    repo: WithSecureLabs/chainsaw
+    patterns: ['all_platforms\+rules\.zip$', 'all_platforms.*rules.*\.zip$', 'windows.*\.zip$']
+    exclude: '^$'
+  - name: CyberChef
+    repo: gchq/CyberChef
+    patterns: ['^CyberChef.*\.zip$']
+    exclude: '^$'
+
+# Python packages installed with pip once python3 is in place.
+homelab_dfir_pip_packages:
+  - volatility3

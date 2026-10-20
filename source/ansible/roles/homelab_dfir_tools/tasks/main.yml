@@ -1,0 +1,40 @@
+---
+- name: Create the tools folder
+  ansible.windows.win_file:
+    path: "{{ homelab_dfir_tools_dir }}"
+    state: directory
+
+- name: Install Chocolatey packages
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ homelab_dfir_choco_packages }}"
+  register: homelab_dfir_choco
+  ignore_errors: true
+
+- name: Write the installer settings
+  ansible.windows.win_copy:
+    content: "{{ homelab_dfir_settings | to_nice_json }}"
+    dest: "{{ homelab_dfir_tools_dir }}\\install-settings.json"
+  vars:
+    homelab_dfir_settings:
+      dest: "{{ homelab_dfir_tools_dir }}"
+      zimmerman_script_url: "{{ homelab_dfir_zimmerman_script_url }}"
+      github_tools: "{{ homelab_dfir_github_tools }}"
+      pip_packages: "{{ homelab_dfir_pip_packages }}"
+      choco_failed: "{{ homelab_dfir_choco.results | selectattr('failed', 'defined') | selectattr('failed') | map(attribute='item') | list }}"
+
+- name: Copy the installer script
+  ansible.windows.win_copy:
+    src: Install-DfirTools.ps1
+    dest: "{{ homelab_dfir_tools_dir }}\\Install-DfirTools.ps1"
+
+- name: Install Zimmerman tools, GitHub tools and Python packages
+  ansible.windows.win_shell: >-
+    & '{{ homelab_dfir_tools_dir }}\Install-DfirTools.ps1'
+    -SettingsPath '{{ homelab_dfir_tools_dir }}\install-settings.json'
+  register: homelab_dfir_install
+
+- name: Show what was installed
+  ansible.builtin.debug:
+    msg: "{{ homelab_dfir_install.stdout_lines }}"
