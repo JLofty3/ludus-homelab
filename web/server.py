@@ -707,6 +707,61 @@ def lab_action(lab_id, body):
     return {"message": message}
 
 
+# Typed confirmation phrases for the destructive node reset.
+RESET_PHRASES = {"labs": "delete all labs", "full": "reset everything"}
+
+
+def reset_node(level, confirm):
+    """Tear down everything the lab builder made. 'labs' deletes all ranges;
+    'full' also deletes every built template (built-in definitions stay, so you
+    can rebuild). Only touches Ludus's own objects - never Proxmox itself."""
+    if level not in RESET_PHRASES:
+        raise ApiError(400, "Unknown reset level.")
+    if (confirm or "").strip().lower() != RESET_PHRASES[level]:
+        raise ApiError(400, f'Type "{RESET_PHRASES[level]}" exactly to confirm.')
+    labs = templates = 0
+    errors = []
+    for r in core.list_ranges():
+        rid = r.get("rangeID")
+        if not rid:
+            continue
+        try:
+            core.run(["range", "rm-range", "-r", rid, "--no-prompt", "--force"], 600)
+            labs += 1
+        except core.LudusError as exc:
+            errors.append(f"lab {rid}: {exc}")
+    if level == "full":
+        for name, state in template_states().items():
+            if state != "ready":   # only remove built templates; leave builds in progress alone
+                continue
+            try:
+                core.run(["templates", "rm", "-n", name], 300)
+                templates += 1
+            except core.LudusError as exc:
+                errors.append(f"template {name}: {exc}")
+    CACHE.drop("ranges")
+    CACHE.drop("templates")
+    parts = [f"{labs} lab{'s' if labs != 1 else ''}"]
+    if level == "full":
+        parts.append(f"{templates} template{'s' if templates != 1 else ''}")
+    msg = "Removed " + " and ".join(parts) + "."
+    if errors:
+        msg += f" {len(errors)} couldn't be removed - see the Ludus logs."
+    return {"message": msg, "labs": labs, "templates": templates, "errors": errors[:5]}
+
+
+def refresh_sources():
+    """Pull the latest template and blueprint definitions from the sources, so
+    new builds use current versions. Runs through the Ludus API, no root needed."""
+    try:
+        core.run(["source", "sync"], 300)
+    except core.LudusError as exc:
+        raise ApiError(502, f"Couldn't refresh the catalogue: {exc}")
+    CACHE.drop("blueprints", "templates")
+    return {"message": "Catalogue refreshed. Any newer template or blueprint definitions are now available; "
+                       "rebuild a template to pick up its latest image."}
+
+
 def templates_payload():
     states = template_states()
     known = {t for entries in core.OS_CATALOGS.values() for _, t in entries}
@@ -889,6 +944,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ("POST", r"/api/templates/build", "templates_build", True),
         ("GET", r"/api/wireguard", "wireguard", True),
         ("GET", r"/api/updates", "updates", True),
+        ("POST", r"/api/refresh", "refresh", True),
+        ("POST", r"/api/reset", "reset", True),
     ]
 
     def _api(self, method, path):
@@ -977,6 +1034,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def api_updates(self, user):
         self._json(200, update_info())
+
+    def api_refresh(self, user):
+        self._json(200, refresh_sources())
+
+    def api_reset(self, user):
+        body = self._body()
+        self._json(200, reset_node(body.get("level"), body.get("confirm")))
 
     def api_plan(self, user):
         self._json(200, plan_payload(self._body()))

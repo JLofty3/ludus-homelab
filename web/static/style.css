@@ -445,3 +445,14 @@ details[open] > summary::before { transform: rotate(90deg); }
   border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--panel); color: var(--ink); }
 .notice.ok { background: color-mix(in oklab, var(--build) 12%, transparent);
   border: 1px solid color-mix(in oklab, var(--build) 40%, var(--rule)); }
+
+/* ---------- updates: danger zone ---------- */
+.danger-zone { border: 1px solid color-mix(in oklab, var(--bad) 45%, var(--rule)); }
+.danger-zone > h3 { color: var(--bad); }
+.danger-ico { color: var(--bad); }
+.danger-action { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+  justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--rule); }
+.danger-text { flex: 1 1 240px; min-width: 0; }
+.danger-text b { font-weight: 600; }
+.danger-text .help { margin-top: 2px; }
+.danger-confirm { min-width: 220px; flex: 1; }

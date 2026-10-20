@@ -418,7 +418,12 @@ else
   say "Ludus downloads each ISO and installs the OS from scratch, once. Expect a few hours"
   say "in total (Windows is the slow part). The node stays usable while it works."
   if printf '%s\n' "${missing[@]}" | grep -q kali; then
-    say "If the Kali build fails on its ISO download (Kali rotates its releases), run: sudo fix-kali"
+    say "Pointing the Kali template at the current release first (Kali rotates its images)..."
+    if fix-kali >/dev/null 2>&1; then
+      ok "Kali template refreshed to the current release"
+    else
+      warn "Couldn't auto-refresh the Kali ISO. If its build fails, run: sudo fix-kali"
+    fi
   fi
   if confirm "Start building them now?"; then
     lud templates build -n "$(IFS=,; echo "${missing[*]}")"

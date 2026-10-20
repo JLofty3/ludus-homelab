@@ -60,6 +60,9 @@
     clock: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 7v5l3.5 2" }]],
     download: [["path", { d: "M12 3v12M7 11l5 5 5-5" }], ["path", { d: "M4 20h16" }]],
     spark: [["path", { d: "M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" }]],
+    warning: [["path", { d: "M12 3l9.5 17H2.5z" }], ["path", { d: "M12 10v4M12 17.5h.01" }]],
+    refresh: [["path", { d: "M3.5 12a8.5 8.5 0 0114.5-6l2.5 2.3" }], ["path", { d: "M20.5 4v4.3h-4.3" }],
+      ["path", { d: "M20.5 12a8.5 8.5 0 01-14.5 6l-2.5-2.3" }], ["path", { d: "M3.5 20v-4.3h4.3" }]],
     sun: [["circle", { cx: 12, cy: 12, r: 4 }], ["path", { d: "M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" }]],
     moon: [["path", { d: "M20 14a8 8 0 01-10-10 8 8 0 1010 10z" }]],
     auto: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 3a9 9 0 010 18z", fill: "currentColor", stroke: "none" }]],
@@ -852,7 +855,7 @@
       const name = h("input", { type: "text", id: "snap-name", value: "clean", maxlength: "40" });
       const desc = h("input", { type: "text", id: "snap-desc", value: "", maxlength: "200" });
       const go = h("button", { class: "btn btn-build", type: "button", text: "Take snapshot" });
-      go.addEventListener("click", () => run(go, "snapshot_create", { name: name.value.trim(), description: desc.value }, "Snapshotting every VM").then(() => extra.replaceChildren()));
+      go.addEventListener("click", () => run(go, "snapshot_create", { name: name.value.trim(), description: desc.value }, "Snapshotting every VM").then(() => { if (extra.contains(go)) extra.replaceChildren(); }));
       extra.replaceChildren(h("div", { class: "panel" }, h("h3", { text: "Take a snapshot of every VM" }),
         h("div", { class: "inline-form" },
           h("div", { class: "field" }, h("label", { for: "snap-name", text: "Name" }), name),
@@ -875,7 +878,7 @@
           h("td", { class: "muted", text: `${plural(s.vms, "VM")}${s.ram ? ", with memory" : ""}` }),
           h("td", { class: "muted", text: s.time ? new Date(s.time * 1000).toLocaleString() : "" }),
           h("td", {}, confirmButton("Roll back", "Click again: changes since then are lost", "", (b) => run(b, "snapshot_revert", { name: s.name }, "Rolling back")
-            .then(() => extra.replaceChildren()))))))));
+            .then(() => { if (extra.contains(b)) extra.replaceChildren(); }))))))));
       }
       panel.append(h("button", { class: "btn btn-quiet", type: "button", text: "Close", onclick: () => extra.replaceChildren() }));
     }
@@ -1097,9 +1100,42 @@
       ta, h("div", { class: "toolbar" }, copyBtn), out);
   }
 
+  function refreshPanel() {
+    const go = h("button", { class: "btn", type: "button" }, icon("refresh"), " Refresh catalogue");
+    go.addEventListener("click", () => act(go, async () => {
+      toast((await api("POST", "/api/refresh", {})).message);
+    }, "Refreshing"));
+    return h("div", { class: "panel" }, h("h3", {}, icon("stack"), " Catalogue & packages"),
+      h("p", { class: "muted", text: "Apps and Linux packages already install their latest version at build time. This pulls the latest template and blueprint definitions from the sources so new builds use current images too." }),
+      h("div", { class: "toolbar" }, go));
+  }
+
+  function dangerPanel() {
+    const action = (label, phrase, level, help) => {
+      const input = h("input", { type: "text", class: "danger-confirm", autocomplete: "off", spellcheck: "false",
+        "aria-label": `Type ${phrase} to confirm`, placeholder: `type "${phrase}" to confirm` });
+      const go = h("button", { class: "btn btn-danger", type: "button", text: label, disabled: true });
+      input.addEventListener("input", () => { go.disabled = input.value.trim().toLowerCase() !== phrase; });
+      go.addEventListener("click", () => act(go, async () => {
+        toast((await api("POST", "/api/reset", { level, confirm: input.value.trim() })).message);
+        input.value = ""; go.disabled = true;
+      }, "Working - this can take a few minutes"));
+      return h("div", { class: "danger-action" },
+        h("div", { class: "danger-text" }, h("b", { text: label }), h("p", { class: "help", text: help })),
+        h("div", { class: "inline-form" }, input, go));
+    };
+    return h("div", { class: "panel danger-zone" }, h("h3", {}, icon("warning", "danger-ico"), " Danger zone"),
+      h("p", { class: "muted", text: "These wipe things the lab builder made on this node. They never touch Proxmox itself, the Ludus install, or any VMs you created outside the lab builder. There's no undo." }),
+      action("Delete all labs", "delete all labs", "labs",
+        "Destroys every lab and its VMs. Your built templates are kept, so you can rebuild labs quickly."),
+      action("Reset the node", "reset everything", "full",
+        "Destroys every lab and every built template - a clean slate. Templates will need building again from scratch (hours)."));
+  }
+
   async function viewUpdates() {
     const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
-    shell("updates", h("div", { class: "detail" }, h("h1", {}, icon("download"), " Updates"), panel, featureRequestPanel()));
+    shell("updates", h("div", { class: "detail" }, h("h1", {}, icon("download"), " Updates"),
+      panel, refreshPanel(), featureRequestPanel(), dangerPanel()));
     let u;
     try { u = await api("GET", "/api/updates"); }
     catch (e) { panel.replaceChildren(h("div", { class: "notice bad", text: e.message })); return; }

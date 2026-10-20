@@ -294,6 +294,12 @@ GUI and the menu straight away. The range config format is documented at
   `journalctl -u ludus-lab-web`.
 - It has a light/dark theme toggle (top-right, remembered per browser) and
   follows your system theme by default.
+- The **Updates** page has a **Refresh catalogue** button (pulls the latest
+  template and blueprint definitions) and a **Danger zone**: *Delete all labs*
+  (every range) and *Reset the node* (every range plus every built template -
+  a clean slate). Both need you to type a confirmation phrase, and both only
+  touch what the lab builder made - never Proxmox itself or VMs you made
+  outside it.
 - The icons and the sign-in artwork are original line drawings generated in the
   page itself (no third-party logos, no stock photos, no external image or font
   requests), so the GUI loads fully offline and nothing phones home.
