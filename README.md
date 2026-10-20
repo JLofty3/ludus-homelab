@@ -407,6 +407,10 @@ alongside it. The catalogue appears there as blueprints.
 - **A lab deploy failed** - on the lab's page, **Show build errors**, then **Rebuild**. Re-running is safe: Ludus re-applies the config and skips anything already done.
 - **VMs get no IP / no internet** - see <https://docs.ludus.cloud/docs/troubleshooting/network>.
 - **The launcher says it can't find an API key** - re-run `./setup.sh`.
+- **The Kali template won't build / its ISO fails to download** - Kali only keeps the latest release on its
+  mirror, so the ISO URL and checksum pinned in Ludus's template go stale and the download fails. Run
+  `sudo fix-kali` on the node: it finds the current Kali release, rewrites the template to match (keeping a
+  backup), and tells you to rebuild it. Re-run it any time Kali's build starts failing on the ISO again.
 - **No live stats / the Reset buttons are missing** - the monitoring token isn't set up. Re-run `./setup.sh`
   (it needs `pveum`, so run it on the Proxmox node itself), then reload the page. If a reset says the guest
   agent isn't reachable, the VM needs to be powered on with the QEMU guest agent running.

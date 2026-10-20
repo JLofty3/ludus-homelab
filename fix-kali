@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# fix-kali - point Ludus's Kali template at the current Kali installer image.
+#
+# Kali only keeps the latest release on its mirror, so the ISO URL and checksum
+# pinned in the template go stale and the build fails to download ("the Kali
+# template gets skipped"). This finds the current release, rewrites the
+# template's iso_url and iso_checksum to match, and leaves a timestamped backup.
+# Re-run it any time Kali's build starts failing on the ISO again.
+set -euo pipefail
+
+red()  { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+ok()   { printf '\033[32m\xe2\x9c\x93\033[0m %s\n' "$*"; }
+info() { printf '\033[36m\xe2\x80\xba\033[0m %s\n' "$*"; }
+
+[[ $EUID -eq 0 ]] || { red "Run this as root (sudo fix-kali)."; exit 1; }
+command -v curl >/dev/null    || { red "curl is required."; exit 1; }
+command -v python3 >/dev/null || { red "python3 is required."; exit 1; }
+
+BASE="https://cdimage.kali.org/current"
+info "Looking up the current Kali installer image..."
+SUMS="$(curl -fsSL --retry 2 "$BASE/SHA256SUMS")" \
+  || { red "Couldn't reach $BASE/SHA256SUMS - is the node online?"; exit 1; }
+LINE="$(grep -E 'kali-linux-[0-9.]+-installer-amd64\.iso' <<<"$SUMS" | head -1 || true)"
+[[ -n "$LINE" ]] || { red "No installer-amd64 image listed in Kali's current release."; exit 1; }
+SUM="$(awk '{print $1}' <<<"$LINE")"
+ISO="$(awk '{print $2}' <<<"$LINE" | sed 's/^[*]//')"
+URL="$BASE/$ISO"
+ok "Current image: $ISO"
+
+mapfile -t FILES < <(find /opt/ludus -path '*packer*' -iname '*kali*' -name '*.pkr.hcl' 2>/dev/null || true)
+if [[ ${#FILES[@]} -eq 0 ]]; then
+  red "Couldn't find a Kali packer template under /opt/ludus/packer."
+  echo "   Ludus may store it elsewhere on your version. Find it with:" >&2
+  echo "     find /opt/ludus -iname '*kali*' -name '*.pkr.hcl'" >&2
+  echo "   then send me the file and I'll fix it directly." >&2
+  exit 1
+fi
+
+patched=0
+for F in "${FILES[@]}"; do
+  BAK="$F.bak.$(date +%Y%m%d-%H%M%S)"
+  cp -a "$F" "$BAK"
+  if URL="$URL" SUM="$SUM" python3 - "$F" <<'PY'
+import os, re, sys
+path = sys.argv[1]
+url, sm = os.environ["URL"], os.environ["SUM"]
+text = orig = open(path).read()
+# iso_url: swap the quoted Kali .iso URL wherever it sits (source attr or variable default)
+text, n = re.subn(r'"https?://[^"]*kali[^"]*\.iso[^"]*"', '"%s"' % url, text)
+if n == 0:
+    sys.stderr.write("  no Kali ISO URL found\n"); sys.exit(3)
+# iso_checksum: direct assignment ...
+text = re.sub(r'(iso_checksum\s*=\s*")[^"]*(")',
+              lambda m: m.group(1) + "sha256:" + sm + m.group(2), text)
+# ... and a variable "iso_checksum" { default = "..." } block
+text = re.sub(r'variable\s+"iso_checksum"\s*\{.*?\}',
+              lambda b: re.sub(r'(default\s*=\s*")[^"]*(")',
+                               lambda d: d.group(1) + "sha256:" + sm + d.group(2), b.group(0)),
+              text, flags=re.S)
+if text == orig:
+    sys.stderr.write("  nothing changed\n"); sys.exit(4)
+if text.count("{") != text.count("}"):
+    sys.stderr.write("  refusing to write: brace mismatch after edit\n"); sys.exit(5)
+open(path, "w").write(text)
+PY
+  then
+    ok "Updated $(basename "$F")  (backup: $(basename "$BAK"))"
+    patched=$((patched + 1))
+  else
+    mv -f "$BAK" "$F"
+    red "Couldn't safely patch $F - left it untouched."
+    echo "   Send me that file and I'll fix it by hand." >&2
+  fi
+done
+
+[[ $patched -gt 0 ]] || { red "No templates were changed."; exit 1; }
+echo
+ok "Kali template now points at the current release."
+info "Rebuild it:        ludus templates build -n kali-x64-desktop-template"
+info "Watch it:          ludus templates logs -f"
+info "Or just use the GUI's Templates page to build it again."

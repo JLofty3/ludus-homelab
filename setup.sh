@@ -116,7 +116,7 @@ command -v ludus >/dev/null || die "Ludus isn't installed yet - do README step 2
 [[ -f "$LUDUS_DIR/install/.stage-3-complete" ]] \
   || die "The Ludus install hasn't finished. Watch it with: ludus-install-status"
 systemctl is-active --quiet ludus || die "The Ludus service isn't running. Check: systemctl status ludus"
-for f in lab lab-update lib/labcore.py web/server.py web/static/index.html web/static/app.js source/source.yml source/blueprints/ad-basic/range-config.yml source/blueprints/linux-net/range-config.yml source/blueprints/sandbox/range-config.yml \
+for f in lab lab-update fix-kali lib/labcore.py web/server.py web/static/index.html web/static/app.js source/source.yml source/blueprints/ad-basic/range-config.yml source/blueprints/linux-net/range-config.yml source/blueprints/sandbox/range-config.yml \
          source/ansible/roles/homelab_sysmon/tasks/main.yml source/ansible/roles/homelab_dfir_tools/tasks/main.yml \
          source/ansible/roles/homelab_wazuh_agent_linux/tasks/main.yml; do
   [[ -e "$HERE/$f" ]] || die "Missing $f next to setup.sh - unpack the whole ludus-homelab folder and run it from there."
@@ -166,6 +166,7 @@ install -m 755 "$HERE/lab" /usr/local/bin/lab
 # One-command self-update: bake in the directory this was run from.
 sed "s|__LAB_SRC_DIR__|$HERE|g" "$HERE/lab-update" > /usr/local/bin/lab-update
 chmod 755 /usr/local/bin/lab-update
+install -m 755 "$HERE/fix-kali" /usr/local/bin/fix-kali
 ok "Terminal menu installed - run it with: lab"
 
 # Record where updates come from so the GUI can show them.
@@ -416,6 +417,9 @@ else
   printf '    %s\n' "${missing[@]}"
   say "Ludus downloads each ISO and installs the OS from scratch, once. Expect a few hours"
   say "in total (Windows is the slow part). The node stays usable while it works."
+  if printf '%s\n' "${missing[@]}" | grep -q kali; then
+    say "If the Kali build fails on its ISO download (Kali rotates its releases), run: sudo fix-kali"
+  fi
   if confirm "Start building them now?"; then
     lud templates build -n "$(IFS=,; echo "${missing[*]}")"
     ok "Template builds started. Follow them with: ludus templates logs -f"
