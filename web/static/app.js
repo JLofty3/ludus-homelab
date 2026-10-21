@@ -66,6 +66,9 @@
     sun: [["circle", { cx: 12, cy: 12, r: 4 }], ["path", { d: "M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" }]],
     moon: [["path", { d: "M20 14a8 8 0 01-10-10 8 8 0 1010 10z" }]],
     auto: [["circle", { cx: 12, cy: 12, r: 9 }], ["path", { d: "M12 3a9 9 0 010 18z", fill: "currentColor", stroke: "none" }]],
+    cube: [["path", { d: "M12 2l8 4.5v9L12 20l-8-4.5v-9z" }], ["path", { d: "M12 2v18M4 6.5l8 4.5 8-4.5" }]],
+    film: [["rect", { x: 3, y: 4, width: 18, height: 16, rx: 2 }], ["path", { d: "M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" }]],
+    folder: [["path", { d: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" }]],
   };
 
   function icon(name, cls) {
@@ -94,6 +97,9 @@
     dfir: "dfir", ghosts: "activity", badblood: "ad" };
   function labIcon(l) {
     const b = String(l.blueprint || "");
+    if (b.includes("minecraft")) return icon("cube", "k-linux");
+    if (b.includes("jellyfin")) return icon("film", "k-linux");
+    if (b.includes("samba")) return icon("folder", "k-linux");
     if (b.includes("linux")) return icon("linux", "k-linux");
     if (b.includes("goad") || b.includes("ad")) return icon("ad", "k-dc");
     return icon("grid");
@@ -367,19 +373,25 @@
     const lab = currentLab();
     const update = () => requestPlan(plan);
 
-    // Step 1: which lab
-    const picker = h("div", { class: "labs-pick", role: "radiogroup", "aria-label": "Lab" },
-      state.catalog.labs.map((l) => h("button", {
-        type: "button", class: "lab-option", role: "radio", "aria-checked": String(l.blueprint === B.blueprint),
-        disabled: !!l.error,
-        onclick: () => { if (l.blueprint !== B.blueprint) { selectLab(l); renderForm(form, plan); update(); } },
-      }, h("span", { class: "title" }, labIcon(l), h("span", { text: l.title })), h("span", { class: "blurb", text: l.blurb }),
-      h("span", { class: "meta", text: l.error ? `Unavailable: ${l.error}` : `${plural(l.base_vms, "VM")} by default, about ${gb(l.base_ram)}` }))));
+    // Step 1: which lab or service
+    const optionBtn = (l) => h("button", {
+      type: "button", class: "lab-option", role: "radio", "aria-checked": String(l.blueprint === B.blueprint),
+      disabled: !!l.error,
+      onclick: () => { if (l.blueprint !== B.blueprint) { selectLab(l); renderForm(form, plan); update(); } },
+    }, h("span", { class: "title" }, labIcon(l), h("span", { text: l.title })), h("span", { class: "blurb", text: l.blurb }),
+    h("span", { class: "meta", text: l.error ? `Unavailable: ${l.error}` : `${plural(l.base_vms, "VM")} by default, about ${gb(l.base_ram)}` }));
+    const labList = state.catalog.labs.filter((l) => l.kind !== "service");
+    const svcList = state.catalog.labs.filter((l) => l.kind === "service");
+    const picker = h("div", { class: "labs-pick", role: "radiogroup", "aria-label": "What to build" },
+      ...(svcList.length ? [h("div", { class: "pick-group", text: "Labs" })] : []),
+      ...labList.map(optionBtn),
+      ...(svcList.length ? [h("div", { class: "pick-group", text: "Services" }), ...svcList.map(optionBtn)] : []));
 
     // Step 2: lab settings
     const settings = h("div", { class: "fields" });
     const drawSettings = () => {
       settings.replaceChildren();
+      if (lab.note) settings.append(h("p", { class: "notice ok field-wide", text: lab.note }));
       const fields = lab.fields || [];
       if (!fields.length) settings.append(h("p", { class: "muted field-wide", text: "This lab has no settings to change. Add tooling below if you like." }));
       for (const f of fields) {
@@ -430,14 +442,14 @@
     const nameInput = h("input", { type: "text", id: "range-name", value: B.name, maxlength: "80" });
     nameInput.addEventListener("input", () => { B.name = nameInput.value; B.nameTouched = true; });
 
-    const isSandbox = !!(B.blueprint && B.blueprint.endsWith("/sandbox"));
-    if (isSandbox) B.addons = [];   // a single tinker box has no tooling section
-    const steps = [step(1, "Choose a lab", picker), step(2, "Settings", settings)];
+    const isSingle = !!(lab && lab.single);   // sandbox + services: one VM, no tooling section
+    if (isSingle) B.addons = [];
+    const steps = [step(1, "Choose what to build", picker), step(2, "Settings", settings)];
     let n = 3;
-    if (!isSandbox) {
+    if (!isSingle) {
       steps.push(step(n++, "Security tooling", h("p", { class: "muted", text: "Optional. Tool servers get their own VLAN; agents go on every Windows and Linux VM except Kali." }), addons));
     }
-    steps.push(step(n, isSandbox ? "Name it" : "Size and name", isSandbox ? null : profiles,
+    steps.push(step(n, isSingle ? "Name it" : "Size and name", isSingle ? null : profiles,
       h("div", { class: "fields" },
         h("div", { class: "field" }, h("label", { for: "range-id", text: "Lab ID" }), idInput,
           h("p", { class: "help", id: "range-id-help", text: "Short; used in VM names. Letters, digits and hyphens." }), idError),
@@ -498,6 +510,12 @@
       const input = h("input", { type: "text", id, value: values[f.key], spellcheck: "false", "aria-describedby": help ? `${id}-help` : false });
       let t;
       input.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => set(input.value.trim()), 350); });
+      return h("div", { class: "field" }, h("label", { for: id, text: f.label }), input, help);
+    }
+    if (f.type === "password") {
+      const input = h("input", { type: "password", id, value: values[f.key], autocomplete: "new-password", "aria-describedby": help ? `${id}-help` : false });
+      let t;
+      input.addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => set(input.value), 350); });
       return h("div", { class: "field" }, h("label", { for: id, text: f.label }), input, help);
     }
     if (f.type === "apps") {

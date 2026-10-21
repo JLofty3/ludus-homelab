@@ -1,0 +1,11 @@
+---
+minecraft_dir: /opt/minecraft
+minecraft_flavor: paper          # paper | vanilla
+minecraft_version: latest        # a version like 1.21.4, or "latest"
+minecraft_port: 25565
+minecraft_max_players: 10
+minecraft_difficulty: normal     # peaceful | easy | normal | hard
+minecraft_gamemode: survival     # survival | creative | adventure
+minecraft_motd: "A Minecraft Server"
+minecraft_whitelist: false
+minecraft_online_mode: true

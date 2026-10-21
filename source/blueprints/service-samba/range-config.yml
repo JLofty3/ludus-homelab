@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+#
+# Samba file share: one headless Debian VM serving a single password-protected
+# network share over SMB, behind the Ludus router. The web GUI and the `lab`
+# launcher set the share name, folder, username and password, applied through
+# the homelab_samba role below.
+
+ludus:
+  - vm_name: "{{ range_id }}-fileshare"
+    hostname: fileshare
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 2
+    cpus: 2
+    linux: true
+    roles:
+      - homelab_samba
+    role_vars:
+      samba_share_name: share
+      samba_share_dir: /srv/share
+      samba_user: share
+      samba_password: "change-me-please"
+
+defaults:
+  timezone: Europe/London

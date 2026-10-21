@@ -171,7 +171,7 @@ def refresh_template_state():
 def ask_field(field, answers):
     label, default, help_text = field["label"], field["default"], field.get("help")
     kind = field["type"]
-    if kind == "text":
+    if kind in ("text", "password"):
         check = core.VALIDATORS.get(field.get("validate"))
         return ask_text(label, default, check)
     if kind == "int":
@@ -183,7 +183,7 @@ def ask_field(field, answers):
     if kind == "select":
         choices = field["choices"]
         start = next((i for i, c in enumerate(choices) if c[0] == default), 0) + 1
-        return choices[ask_choice(label, [(c[1], c[2]) for c in choices], default=start)][0]
+        return choices[ask_choice(label, [(c[1], c[2] if len(c) > 2 else "") for c in choices], default=start)][0]
     if kind == "template":
         catalog = core.OS_CATALOGS[field["catalog"]]
         names = [t for _, t in catalog]

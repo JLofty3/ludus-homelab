@@ -1,0 +1,5 @@
+---
+samba_share_name: share
+samba_share_dir: /srv/share
+samba_user: share
+samba_password: "change-me-please"

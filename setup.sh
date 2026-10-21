@@ -117,8 +117,10 @@ command -v ludus >/dev/null || die "Ludus isn't installed yet - do README step 2
   || die "The Ludus install hasn't finished. Watch it with: ludus-install-status"
 systemctl is-active --quiet ludus || die "The Ludus service isn't running. Check: systemctl status ludus"
 for f in lab lab-update fix-kali lib/labcore.py web/server.py web/static/index.html web/static/app.js source/source.yml source/blueprints/ad-basic/range-config.yml source/blueprints/linux-net/range-config.yml source/blueprints/sandbox/range-config.yml \
+         source/blueprints/service-minecraft/range-config.yml source/blueprints/service-jellyfin/range-config.yml source/blueprints/service-samba/range-config.yml \
          source/ansible/roles/homelab_sysmon/tasks/main.yml source/ansible/roles/homelab_dfir_tools/tasks/main.yml \
-         source/ansible/roles/homelab_wazuh_agent_linux/tasks/main.yml; do
+         source/ansible/roles/homelab_wazuh_agent_linux/tasks/main.yml \
+         source/ansible/roles/homelab_minecraft/tasks/main.yml source/ansible/roles/homelab_jellyfin/tasks/main.yml source/ansible/roles/homelab_samba/tasks/main.yml; do
   [[ -e "$HERE/$f" ]] || die "Missing $f next to setup.sh - unpack the whole ludus-homelab folder and run it from there."
 done
 if ! python3 -c 'import yaml' 2>/dev/null; then
@@ -208,7 +210,7 @@ if ludus source list --json 2>/dev/null | grep -qE "\"sourceID\": *\"$SOURCE_ID\
 else
   lud source add -d "$APP_DIR/source" --id "$SOURCE_ID" --all --global
 fi
-ok "Catalogue installed: $SOURCE_ID/ad-basic, $SOURCE_ID/linux-net and the add-on roles"
+ok "Catalogue installed: labs (AD, GOAD, Linux net, sandbox), services (Minecraft, Jellyfin, Samba) and the add-on roles"
 
 say "Installing the SIEM roles from Ansible Galaxy"
 installed_roles="$(ludus ansible role list --json 2>/dev/null | python3 -c '

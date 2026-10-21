@@ -1,0 +1,13 @@
+# Managed by the homelab_minecraft role - edits here are overwritten on deploy.
+motd={{ minecraft_motd }}
+server-port={{ minecraft_port }}
+max-players={{ minecraft_max_players }}
+difficulty={{ minecraft_difficulty }}
+gamemode={{ minecraft_gamemode }}
+white-list={{ 'true' if minecraft_whitelist | bool else 'false' }}
+enforce-whitelist={{ 'true' if minecraft_whitelist | bool else 'false' }}
+online-mode={{ 'true' if minecraft_online_mode | bool else 'false' }}
+enable-command-block=false
+spawn-protection=16
+view-distance=10
+simulation-distance=10

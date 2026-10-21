@@ -1,0 +1,11 @@
+galaxy_info:
+  role_name: homelab_minecraft
+  author: homelab
+  description: Installs a Minecraft Java server (Paper or Vanilla) on Debian and runs it under systemd.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - all
+dependencies: []

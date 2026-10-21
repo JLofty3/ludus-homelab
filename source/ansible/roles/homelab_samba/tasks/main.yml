@@ -1,0 +1,62 @@
+---
+# Installs Samba on Debian and serves one password-protected share.
+
+- name: Install Samba
+  ansible.builtin.apt:
+    name:
+      - samba
+      - samba-common-bin
+    state: present
+    update_cache: true
+
+- name: Create the share's system user
+  ansible.builtin.user:
+    name: "{{ samba_user }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create the share folder
+  ansible.builtin.file:
+    path: "{{ samba_share_dir }}"
+    state: directory
+    owner: "{{ samba_user }}"
+    group: "{{ samba_user }}"
+    mode: "0775"
+
+- name: Check whether the Samba user already exists
+  ansible.builtin.command:
+    cmd: "pdbedit -L -u {{ samba_user }}"
+  register: samba_existing
+  changed_when: false
+  failed_when: false
+
+- name: Set the Samba password
+  ansible.builtin.shell:
+    cmd: "set -o pipefail; printf '%s\\n%s\\n' \"$SMB_PW\" \"$SMB_PW\" | smbpasswd -s -a {{ samba_user }}"
+    executable: /bin/bash
+  environment:
+    SMB_PW: "{{ samba_password }}"
+  register: samba_setpw
+  changed_when: samba_existing.rc != 0
+  no_log: true
+
+- name: Configure the share
+  ansible.builtin.blockinfile:
+    path: /etc/samba/smb.conf
+    marker: "# {mark} HOMELAB SAMBA SHARE"
+    block: |
+      [{{ samba_share_name }}]
+         path = {{ samba_share_dir }}
+         browseable = yes
+         read only = no
+         valid users = {{ samba_user }}
+         create mask = 0664
+         directory mask = 0775
+  notify: Restart samba
+
+- name: Ensure smbd is enabled and running
+  ansible.builtin.systemd:
+    name: smbd
+    enabled: true
+    state: started

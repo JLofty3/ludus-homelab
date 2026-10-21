@@ -176,6 +176,9 @@ input[aria-invalid="true"] { border-color: var(--bad); }
 .lab-option .title { font-family: var(--display); font-weight: 700; font-size: 1.1rem; }
 .lab-option .blurb { color: var(--ink-2); font-size: 0.9rem; }
 .lab-option .meta { font-size: 0.85rem; color: var(--ink-2); }
+.pick-group { grid-column: 1 / -1; font-family: var(--display); font-weight: 700; font-size: 0.8rem;
+  text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); margin-top: 6px; }
+.labs-pick > .pick-group:first-child { margin-top: 0; }
 
 .addons { display: grid; gap: 2px; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--panel); }
 .addon { padding: 12px 14px; border-bottom: 1px solid var(--rule); }

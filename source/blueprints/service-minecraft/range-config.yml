@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+#
+# Minecraft service: one headless Debian VM running a Minecraft Java server,
+# behind the Ludus router so it has internet during the build. The web GUI and
+# the `lab` launcher pick the server type (Paper or Vanilla), version, size and
+# gameplay settings - all applied through the homelab_minecraft role below.
+
+ludus:
+  - vm_name: "{{ range_id }}-minecraft"
+    hostname: minecraft
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 6
+    cpus: 2
+    linux: true
+    roles:
+      - homelab_minecraft
+    role_vars:
+      minecraft_flavor: paper
+      minecraft_version: latest
+      minecraft_max_players: 10
+      minecraft_difficulty: normal
+      minecraft_gamemode: survival
+      minecraft_motd: "A Minecraft Server"
+      minecraft_whitelist: false
+      minecraft_online_mode: true
+
+defaults:
+  timezone: Europe/London

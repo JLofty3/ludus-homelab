@@ -17,7 +17,7 @@ import tempfile
 
 import yaml
 
-VERSION = "1.5.2"
+VERSION = "1.6.0"
 LUDUS = os.environ.get("LUDUS_BIN", "ludus")
 KEY_FILES = [p for p in (os.environ.get("LAB_KEY_FILE"), "/root/.config/ludus-lab/env", "/etc/ludus-lab/env") if p]
 DEFAULT_ROUTER_TEMPLATE = "debian-13-x64-server-template"
@@ -577,7 +577,51 @@ def valid_hostname(value):
     return None
 
 
-VALIDATORS = {"fqdn": valid_fqdn, "hostname": valid_hostname}
+def valid_mcversion(value):
+    v = str(value).strip().lower()
+    if v == "latest":
+        return None
+    return None if re.fullmatch(r"\d+\.\d+(\.\d+)?", v) else 'A version like 1.21.4, or "latest".'
+
+
+def valid_motd(value):
+    v = str(value)
+    if not v.strip():
+        return "Give the server a short description."
+    if len(v) > 59:
+        return "Keep it under 60 characters (Minecraft's limit)."
+    return None
+
+
+def valid_abspath(value):
+    v = str(value).strip()
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]{1,98}", v) or "//" in v or v.rstrip("/") == "":
+        return "An absolute path like /srv/media (letters, digits, . _ - and / only)."
+    return None
+
+
+def valid_sharename(value):
+    return None if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _-]{0,30}", str(value)) else \
+        "Letters, digits, spaces, - and _; start with a letter or digit; 31 characters max."
+
+
+def valid_username(value):
+    return None if re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", str(value)) else \
+        "Lowercase letters, digits, - and _; start with a letter or _; 31 characters max."
+
+
+def valid_password(value):
+    v = str(value)
+    if len(v) < 8:
+        return "At least 8 characters."
+    if len(v) > 128:
+        return "Keep it under 128 characters."
+    return None
+
+
+VALIDATORS = {"fqdn": valid_fqdn, "hostname": valid_hostname, "mcversion": valid_mcversion,
+              "motd": valid_motd, "abspath": valid_abspath, "sharename": valid_sharename,
+              "username": valid_username, "password": valid_password}
 
 
 # --------------------------------------------------------------------------
@@ -829,8 +873,135 @@ def apply_sandbox(cfg, o):
     apply_apps(vm, o.get("apps") or [])
 
 
+# --------------------------------------------------------------------------
+# Services: single-VM, ready-to-use servers (not cyber-range labs). Each is one
+# headless Debian VM with an Ansible role that installs and configures the
+# service. They show up in their own group in the builder and, once deployed,
+# in "Your labs" alongside everything else - a single pane of glass.
+# --------------------------------------------------------------------------
+SERVICE_TEMPLATE = "debian-12-x64-server-template"
+
+
+def _service_vm(cfg):
+    machines = vms(cfg)
+    return machines[0] if machines else None
+
+
+def _apply_service(cfg, o, role, role_vars, default_host):
+    vm = _service_vm(cfg)
+    if not vm:
+        return
+    host = str(o.get("hostname") or default_host)
+    slug = re.sub(r"[^A-Za-z0-9-]", "-", host.lower()).strip("-")[:30] or default_host
+    vm["template"] = SERVICE_TEMPLATE
+    vm["hostname"] = host
+    vm["vm_name"] = "{{ range_id }}-" + slug
+    vm["ram_gb"] = int(o["ram"])
+    vm["cpus"] = int(o.get("cpus") or 2)
+    vm.pop("windows", None)
+    vm.pop("domain", None)
+    vm["linux"] = True
+    vm["roles"] = [role]
+    vm["role_vars"] = role_vars
+
+
+MC_DIFFICULTY = [("peaceful", "Peaceful"), ("easy", "Easy"), ("normal", "Normal"), ("hard", "Hard")]
+MC_GAMEMODE = [("survival", "Survival"), ("creative", "Creative"), ("adventure", "Adventure")]
+MC_FLAVOR = [("paper", "Paper - faster, supports plugins"), ("vanilla", "Vanilla - the official Mojang server")]
+
+
+def schema_minecraft(cfg):
+    return [
+        {"key": "flavor", "type": "select", "label": "Server type", "default": "paper", "choices": MC_FLAVOR,
+         "help": "Paper performs better and supports plugins; Vanilla is the stock Mojang server."},
+        {"key": "mc_version", "type": "text", "label": "Minecraft version", "default": "latest", "validate": "mcversion",
+         "help": 'A version like 1.21.4, or "latest" for the newest release at build time.'},
+        {"key": "hostname", "type": "text", "label": "Hostname", "default": "minecraft", "validate": "hostname"},
+        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 2, "max": 24, "default": 6,
+         "help": "Minecraft likes RAM; 6-8 GB is comfortable for a handful of players."},
+        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 8, "default": 2},
+        {"key": "max_players", "type": "int", "label": "Max players", "min": 1, "max": 100, "default": 10},
+        {"key": "difficulty", "type": "select", "label": "Difficulty", "default": "normal", "choices": MC_DIFFICULTY},
+        {"key": "gamemode", "type": "select", "label": "Default game mode", "default": "survival", "choices": MC_GAMEMODE},
+        {"key": "motd", "type": "text", "label": "Server description", "default": "A Minecraft Server", "validate": "motd",
+         "help": "The line players see in their server list."},
+        {"key": "whitelist", "type": "bool", "label": "Whitelist only", "default": False,
+         "help": "On: only names you add can join. Off: anyone who can reach it (online-mode still checks real Mojang accounts)."},
+    ]
+
+
+def apply_minecraft(cfg, o):
+    _apply_service(cfg, o, "homelab_minecraft", {
+        "minecraft_flavor": o["flavor"],
+        "minecraft_version": str(o["mc_version"]).lower(),
+        "minecraft_max_players": int(o["max_players"]),
+        "minecraft_difficulty": o["difficulty"],
+        "minecraft_gamemode": o["gamemode"],
+        "minecraft_motd": o["motd"],
+        "minecraft_whitelist": bool(o["whitelist"]),
+        "minecraft_online_mode": True,
+    }, "minecraft")
+
+
+def schema_jellyfin(cfg):
+    return [
+        {"key": "hostname", "type": "text", "label": "Hostname", "default": "jellyfin", "validate": "hostname"},
+        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 2, "max": 16, "default": 4,
+         "help": "4 GB is plenty for direct play; add more if several people transcode at once."},
+        {"key": "cpus", "type": "int", "label": "CPUs", "min": 2, "max": 12, "default": 4,
+         "help": "Transcoding is CPU-heavy, so more cores help with multiple simultaneous streams."},
+        {"key": "media_dir", "type": "text", "label": "Media folder (on the VM)", "default": "/srv/media", "validate": "abspath",
+         "help": "Where your libraries live. An empty folder is created; add media later over the file share or SSH."},
+    ]
+
+
+def apply_jellyfin(cfg, o):
+    _apply_service(cfg, o, "homelab_jellyfin", {"jellyfin_media_dir": o["media_dir"]}, "jellyfin")
+
+
+def schema_samba(cfg):
+    return [
+        {"key": "hostname", "type": "text", "label": "Hostname", "default": "fileshare", "validate": "hostname"},
+        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 1, "max": 8, "default": 2},
+        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 4, "default": 2},
+        {"key": "share_name", "type": "text", "label": "Share name", "default": "share", "validate": "sharename",
+         "help": r"What the share is called on the network, e.g. \\fileshare\share."},
+        {"key": "share_dir", "type": "text", "label": "Share folder (on the VM)", "default": "/srv/share", "validate": "abspath"},
+        {"key": "smb_user", "type": "text", "label": "Username", "default": "share", "validate": "username"},
+        {"key": "smb_password", "type": "password", "label": "Password", "default": "", "validate": "password",
+         "help": "Used to connect to the share. At least 8 characters."},
+    ]
+
+
+def apply_samba(cfg, o):
+    _apply_service(cfg, o, "homelab_samba", {
+        "samba_share_name": o["share_name"],
+        "samba_share_dir": o["share_dir"],
+        "samba_user": o["smb_user"],
+        "samba_password": o["smb_password"],
+    }, "fileshare")
+
+
+KNOWN_SERVICES = [
+    {"suffix": "/service-minecraft", "title": "Minecraft server", "range_id": "mc", "kind": "service", "single": True,
+     "blurb": "A ready-to-play Minecraft Java server (Paper or Vanilla), sized and configured how you like.",
+     "note": "Once it's deployed, connect in Minecraft (Java Edition) to this VM's IP on port 25565. "
+             "It's reachable on your LAN/VPN; to let friends in from outside, forward TCP 25565 to it on your router.",
+     "schema": schema_minecraft, "apply": apply_minecraft},
+    {"suffix": "/service-jellyfin", "title": "Jellyfin media server", "range_id": "jf", "kind": "service", "single": True,
+     "blurb": "Your own streaming service for the movies, shows and music you own. Finish setup in the browser.",
+     "note": "Once it's deployed, open http://<this VM's IP>:8096 in a browser to create your admin account "
+             "and add libraries. Copy media onto it over the file share or SSH.",
+     "schema": schema_jellyfin, "apply": apply_jellyfin},
+    {"suffix": "/service-samba", "title": "Samba file share", "range_id": "fs", "kind": "service", "single": True,
+     "blurb": "A private, password-protected network drive on your LAN. Map it from Windows, macOS or Linux.",
+     "note": r"Once it's deployed, map \\<this VM's IP>\<share name> with the username and password you set above.",
+     "schema": schema_samba, "apply": apply_samba},
+]
+
+
 KNOWN_LABS = [
-    {"suffix": "/sandbox", "title": "Single VM sandbox", "range_id": "box",
+    {"suffix": "/sandbox", "title": "Single VM sandbox", "range_id": "box", "single": True,
      "blurb": "One machine to tinker with: pick any Windows or Linux OS, size it, and tick apps to pre-install. "
               "No domain, no network to manage.",
      "schema": schema_sandbox, "apply": apply_sandbox},
@@ -848,7 +1019,7 @@ KNOWN_LABS = [
 
 
 def known_lab(blueprint_id):
-    return next((lab for lab in KNOWN_LABS if str(blueprint_id).endswith(lab["suffix"])), None)
+    return next((lab for lab in KNOWN_LABS + KNOWN_SERVICES if str(blueprint_id).endswith(lab["suffix"])), None)
 
 
 def lab_info(blueprint):
@@ -863,6 +1034,9 @@ def lab_info(blueprint):
         "title": lab["title"] if lab else blueprint.get("name") or bp_id,
         "blurb": lab["blurb"] if lab else blueprint.get("description", ""),
         "known": bool(lab),
+        "kind": (lab.get("kind", "lab") if lab else "lab"),
+        "single": bool(lab.get("single")) if lab else False,
+        "note": (lab.get("note") if lab else None),
         "range_id": base_id[:20],
     }
 
@@ -883,8 +1057,8 @@ def validate_options(schema, raw):
             continue
         value = raw.get(key, field["default"])
         kind = field["type"]
-        if kind == "text":
-            value = str(value).strip()
+        if kind in ("text", "password"):
+            value = str(value).strip() if kind == "text" else str(value)
             check = VALIDATORS.get(field.get("validate"))
             problem = check(value) if check else None
             if problem:
@@ -1249,6 +1423,12 @@ def build_time_estimate(cfg, states):
             vm_min += 4    # domain join
         if "badblood" in names:
             vm_min += 8    # thousands of AD objects
+        if "homelab_minecraft" in names:
+            vm_min += 8    # install Java + download the server jar
+        elif "homelab_jellyfin" in names:
+            vm_min += 6    # add the repo + install Jellyfin
+        elif "homelab_samba" in names:
+            vm_min += 3    # install and configure Samba
         # Chocolatey app installs are the slow extra, ~1 min each, capped.
         win = vm.get("windows") or {}
         if isinstance(win, dict):

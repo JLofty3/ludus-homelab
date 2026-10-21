@@ -1,0 +1,53 @@
+---
+# Installs the Jellyfin media server on Debian from the official repository and
+# creates an empty media folder. The admin finishes setup in a browser at
+# http://<vm-ip>:8096 after deploy.
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Download the Jellyfin signing key
+  ansible.builtin.get_url:
+    url: https://repo.jellyfin.org/jellyfin_team.gpg.key
+    dest: /usr/share/keyrings/jellyfin.asc
+    mode: "0644"
+
+- name: Convert the Jellyfin key for apt
+  ansible.builtin.command:
+    cmd: gpg --batch --yes --dearmor -o /usr/share/keyrings/jellyfin.gpg /usr/share/keyrings/jellyfin.asc
+    creates: /usr/share/keyrings/jellyfin.gpg
+
+- name: Add the Jellyfin repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=amd64 signed-by=/usr/share/keyrings/jellyfin.gpg]
+      https://repo.jellyfin.org/{{ ansible_distribution | lower }}
+      {{ ansible_distribution_release }} main
+    filename: jellyfin
+    state: present
+    update_cache: true
+
+- name: Install Jellyfin
+  ansible.builtin.apt:
+    name: jellyfin
+    state: present
+
+- name: Create the media folder
+  ansible.builtin.file:
+    path: "{{ jellyfin_media_dir }}"
+    state: directory
+    owner: jellyfin
+    group: jellyfin
+    mode: "0755"
+
+- name: Ensure Jellyfin is enabled and running
+  ansible.builtin.systemd:
+    name: jellyfin
+    enabled: true
+    state: started

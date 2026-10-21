@@ -35,6 +35,23 @@ using can be powered off from *Manage my labs* and they stop using RAM.
 Any other blueprint you add to Ludus later shows up in the GUI and the menu too,
 with the general options (add-ons, RAM profile, timezone).
 
+## Services
+
+Alongside the cyber-range labs, the builder has a **Services** group: single,
+ready-to-use servers for yourself and your household. They're built the same way
+(one Debian VM behind the router) and appear in *Your labs* once they're up, so
+everything on the node stays in one pane of glass.
+
+| Service | What you get | You can change |
+|---|---|---|
+| **Minecraft server** | A Minecraft Java server (Paper or Vanilla) on Debian, run under systemd | Server type, version (or "latest"), RAM, CPUs, max players, difficulty, game mode, description, whitelist |
+| **Jellyfin media server** | The Jellyfin media server; you finish setup in a browser at `http://<ip>:8096` | Hostname, RAM, CPUs, media folder |
+| **Samba file share** | One password-protected SMB share on your LAN | Share name, folder, username, password, RAM, CPUs |
+
+These are LAN/VPN services by default. To reach one from outside your network,
+forward its port on your router to the VM's IP (Minecraft `25565/tcp`, Jellyfin
+`8096/tcp`). Each service's page shows exactly how to connect once it's deployed.
+
 ## OS versions
 
 You pick the version wherever it makes sense.
@@ -195,7 +212,7 @@ cd ludus-homelab
 
 1. Creates an API key for your Ludus admin and saves it to `/root/.config/ludus-lab/env` (root-only)
 2. Installs the terminal menu as `/usr/local/bin/lab`
-3. Registers the catalogue with Ludus as the `homelab` source (`homelab/ad-basic`, `homelab/linux-net`) along with the add-on roles
+3. Registers the catalogue with Ludus as the `homelab` source (the labs, the Minecraft / Jellyfin / Samba services) along with all the add-on and service roles
 4. Installs the add-on roles. Elastic and Wazuh come from Ansible Galaxy. The two Velociraptor roles are downloaded from GitHub at a pinned commit and cached in `/opt/ludus-homelab/vendor`.
 5. Installs the official GOAD blueprint from the Bad Sector Labs source
 6. Sets up the web GUI as the `ludus-lab-web` service (details under **About the web GUI**)

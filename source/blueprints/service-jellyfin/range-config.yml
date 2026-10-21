@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://docs.ludus.cloud/schemas/range-config.json
+#
+# Jellyfin service: one headless Debian VM running the Jellyfin media server,
+# behind the Ludus router so it has internet during the build. After it deploys,
+# finish setup in a browser at http://<vm-ip>:8096. The homelab_jellyfin role
+# installs Jellyfin and creates the media folder.
+
+ludus:
+  - vm_name: "{{ range_id }}-jellyfin"
+    hostname: jellyfin
+    template: debian-12-x64-server-template
+    vlan: 10
+    ip_last_octet: 10
+    ram_gb: 4
+    cpus: 4
+    linux: true
+    roles:
+      - homelab_jellyfin
+    role_vars:
+      jellyfin_media_dir: /srv/media
+
+defaults:
+  timezone: Europe/London

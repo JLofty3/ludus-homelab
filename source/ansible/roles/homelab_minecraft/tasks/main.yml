@@ -1,0 +1,182 @@
+---
+# Installs a Minecraft Java server (Paper or Vanilla) on Debian, configured from
+# the role variables, and runs it under systemd as an unprivileged user.
+
+- name: Install prerequisites
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+
+- name: Download the Adoptium (Temurin) signing key
+  ansible.builtin.get_url:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    dest: /usr/share/keyrings/adoptium.asc
+    mode: "0644"
+
+- name: Convert the Adoptium key for apt
+  ansible.builtin.command:
+    cmd: gpg --batch --yes --dearmor -o /usr/share/keyrings/adoptium.gpg /usr/share/keyrings/adoptium.asc
+    creates: /usr/share/keyrings/adoptium.gpg
+
+- name: Add the Adoptium repository
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb {{ ansible_distribution_release }} main"
+    filename: adoptium
+    state: present
+    update_cache: true
+
+- name: Install the Temurin 21 JRE (headless)
+  ansible.builtin.apt:
+    name: temurin-21-jre
+    state: present
+
+- name: Create the minecraft system user
+  ansible.builtin.user:
+    name: minecraft
+    system: true
+    home: "{{ minecraft_dir }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+
+- name: Ensure the server directory exists
+  ansible.builtin.file:
+    path: "{{ minecraft_dir }}"
+    state: directory
+    owner: minecraft
+    group: minecraft
+    mode: "0755"
+
+# ---- Resolve which server jar to download ---------------------------------
+- name: Resolve the Paper download
+  when: minecraft_flavor == "paper"
+  block:
+    - name: Get the Paper project info
+      ansible.builtin.uri:
+        url: https://api.papermc.io/v2/projects/paper
+        return_content: true
+      register: paper_project
+
+    - name: Pick the Paper version
+      ansible.builtin.set_fact:
+        minecraft_resolved_version: "{{ minecraft_version if minecraft_version != 'latest' else paper_project.json.versions[-1] }}"
+
+    - name: Get the builds for that Paper version
+      ansible.builtin.uri:
+        url: "https://api.papermc.io/v2/projects/paper/versions/{{ minecraft_resolved_version }}/builds"
+        return_content: true
+      register: paper_builds
+
+    - name: Pick the newest Paper build
+      ansible.builtin.set_fact:
+        paper_build: "{{ paper_builds.json.builds[-1] }}"
+
+    - name: Compose the Paper download URL
+      ansible.builtin.set_fact:
+        minecraft_jar_url: >-
+          https://api.papermc.io/v2/projects/paper/versions/{{ minecraft_resolved_version
+          }}/builds/{{ paper_build.build }}/downloads/{{
+          paper_build.downloads.application.name }}
+
+- name: Resolve the Vanilla download
+  when: minecraft_flavor == "vanilla"
+  block:
+    - name: Get the Mojang version manifest
+      ansible.builtin.uri:
+        url: https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
+        return_content: true
+      register: mojang_manifest
+
+    - name: Pick the Vanilla version
+      ansible.builtin.set_fact:
+        minecraft_resolved_version: "{{ minecraft_version if minecraft_version != 'latest' else mojang_manifest.json.latest.release }}"
+
+    - name: Find that version's metadata URL
+      ansible.builtin.set_fact:
+        minecraft_meta_url: >-
+          {{ (mojang_manifest.json.versions
+          | selectattr('id', 'equalto', minecraft_resolved_version)
+          | list | first | default({})).url | default('') }}
+
+    - name: Stop if the version is unknown
+      ansible.builtin.fail:
+        msg: "Minecraft version {{ minecraft_resolved_version }} isn't in Mojang's manifest."
+      when: minecraft_meta_url | length == 0
+
+    - name: Get that version's metadata
+      ansible.builtin.uri:
+        url: "{{ minecraft_meta_url }}"
+        return_content: true
+      register: minecraft_meta
+
+    - name: Compose the Vanilla download URL
+      ansible.builtin.set_fact:
+        minecraft_jar_url: "{{ minecraft_meta.json.downloads.server.url }}"
+
+- name: Record the installed version (for reference)
+  ansible.builtin.copy:
+    dest: "{{ minecraft_dir }}/.installed-version"
+    content: "{{ minecraft_flavor }} {{ minecraft_resolved_version }}\n"
+    owner: minecraft
+    group: minecraft
+    mode: "0644"
+
+- name: Download the server jar
+  ansible.builtin.get_url:
+    url: "{{ minecraft_jar_url }}"
+    dest: "{{ minecraft_dir }}/server.jar"
+    owner: minecraft
+    group: minecraft
+    mode: "0644"
+  notify: Restart minecraft
+
+# ---- Configure the server --------------------------------------------------
+- name: Accept the Minecraft EULA
+  ansible.builtin.copy:
+    dest: "{{ minecraft_dir }}/eula.txt"
+    content: "eula=true\n"
+    owner: minecraft
+    group: minecraft
+    mode: "0644"
+
+- name: Work out the heap size (leave ~1 GB for the OS, at least 1 GB)
+  ansible.builtin.set_fact:
+    minecraft_heap_mb: "{{ [ansible_memtotal_mb - 1024, 1024] | max }}"
+
+- name: Write server.properties
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ minecraft_dir }}/server.properties"
+    owner: minecraft
+    group: minecraft
+    mode: "0644"
+  notify: Restart minecraft
+
+- name: Seed an empty whitelist when whitelisting is on
+  ansible.builtin.copy:
+    dest: "{{ minecraft_dir }}/whitelist.json"
+    content: "[]\n"
+    owner: minecraft
+    group: minecraft
+    mode: "0644"
+    force: false
+  when: minecraft_whitelist | bool
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: minecraft.service.j2
+    dest: /etc/systemd/system/minecraft.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart minecraft
+
+- name: Enable and start the Minecraft service
+  ansible.builtin.systemd:
+    name: minecraft.service
+    enabled: true
+    state: started
+    daemon_reload: true
