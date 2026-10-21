@@ -33,6 +33,17 @@
     return isNaN(d) ? "never" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   };
 
+  // Loading affordances: a shimmer skeleton and an indeterminate progress bar.
+  function skeletonStack(lines) {
+    return h("div", { class: "sk-stack", "aria-hidden": "true" },
+      Array.from({ length: lines || 3 }, () => h("div", { class: "skeleton sk-line" })));
+  }
+  function loadingBar(label, calm) {
+    return h("div", { class: "loading", role: "status" },
+      h("div", { class: "progress" + (calm ? " calm" : "") }, h("span")),
+      label ? h("p", { class: "muted", text: label }) : null);
+  }
+
   // ---------------------------------------------------------------- icons
   // Original line glyphs, drawn on a 24x24 grid. Not any product's logo.
   const SVGNS = "http://www.w3.org/2000/svg";
@@ -386,7 +397,8 @@
     const form = h("div", { class: "steps" });
     const plan = h("aside", { class: "plan", "aria-labelledby": "plan-title" });
     shell("build", h("div", { class: "build" }, form, plan));
-    plan.append(h("p", { class: "plan-empty", text: "Loading the catalogue..." }));
+    form.append(h("section", { class: "step" }, h("div", { class: "skeleton sk-card" }), skeletonStack(4)));
+    plan.append(loadingBar("Loading the catalogue…", true));
 
     try { state.catalog = await api("GET", "/api/catalog"); }
     catch (e) { form.replaceChildren(h("div", { class: "notice bad", text: e.message })); plan.replaceChildren(); return; }
@@ -678,7 +690,7 @@
     planEl.replaceChildren(h("div", { class: "plan-head" }, h("h2", { id: "plan-title", text: "Range map" }),
       p ? h("span", { class: "muted small", text: p.firewall === "segmented" ? "Firewall: only allowed flows" : "Firewall: open between VLANs" }) : null));
     if (state.planError) planEl.append(h("div", { class: "notice bad", role: "alert", text: state.planError }));
-    if (!p) { planEl.append(h("p", { class: "plan-empty", text: "Working out what this lab needs..." })); return; }
+    if (!p) { planEl.append(loadingBar("Working out what this lab needs…", true)); return; }
 
     const seen = new Set();
     let plain = 0;
@@ -814,6 +826,7 @@
     const enc = encodeURIComponent(id);
     const head = h("div", { class: "detail-head" });
     const toolbar = h("div", { class: "toolbar" });
+    const deployBanner = h("div", {});
     const extra = h("div", {});
     const vmsPanel = h("div", { class: "panel" });
     const statsPanel = h("div", { class: "panel", hidden: true });
@@ -821,7 +834,7 @@
     const logBox = h("pre", { class: "log", tabindex: "0", "aria-label": "Build log" });
     const logDetails = h("details", { class: "panel" }, h("summary", {}, h("h3", { text: "Build log" })), logBox);
     const errorsBox = h("pre", { class: "log", hidden: true });
-    box.replaceChildren(head, toolbar, extra, vmsPanel, statsPanel, toolsPanel, logDetails, errorsBox);
+    box.replaceChildren(head, toolbar, deployBanner, extra, vmsPanel, statsPanel, toolsPanel, logDetails, errorsBox);
     let lab = null;
     let toolbarFor = "";
     let statsStarted = false;
@@ -883,6 +896,16 @@
     };
 
     const drawPanels = (deploying) => {
+      if (deploying) {
+        const n = lab.vms.length;
+        deployBanner.replaceChildren(h("div", { class: "deploy-progress" },
+          h("div", { class: "dp-head" }, icon("spark"), h("span", { text: "Building this lab…" })),
+          h("div", { class: "progress" }, h("span")),
+          h("p", { class: "dp-sub", text: n ? `${plural(n, "VM")} so far. Ludus clones and configures each one in turn; the log below updates live.`
+            : "Ludus is setting up the range. VMs appear here as they're created, and the log below updates live." })));
+      } else {
+        deployBanner.replaceChildren();
+      }
       const canReset = lab.vms.some((v) => v.can_reset);
       const cols = canReset ? ["VM", "IP", "Power", "Password"] : ["VM", "IP", "Power"];
       vmsPanel.replaceChildren(h("h3", { text: "VMs" }), lab.vms.length
@@ -937,7 +960,7 @@
     }
 
     async function rollbackList() {
-      const panel = h("div", { class: "panel" }, h("h3", { text: "Roll back to a snapshot" }), h("p", { class: "muted", text: "Loading snapshots..." }));
+      const panel = h("div", { class: "panel" }, h("h3", { text: "Roll back to a snapshot" }), loadingBar("Loading snapshots…"));
       extra.replaceChildren(panel);
       let r;
       try { r = await api("GET", `/api/labs/${enc}/snapshots`); }
@@ -1257,7 +1280,7 @@
   }
 
   async function viewUpdates() {
-    const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
+    const panel = h("div", { class: "panel" }, loadingBar("Loading…"));
     shell("updates", h("div", { class: "detail" }, h("h1", {}, icon("download"), " Updates"),
       panel, refreshPanel(), featureRequestPanel(), state.admin ? dangerPanel() : null));
     let u;
@@ -1364,7 +1387,7 @@
   // ---------------------------------------------------------------- people
   async function viewAccounts() {
     if (!state.admin) { location.hash = "#/build"; return; }
-    const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
+    const panel = h("div", { class: "panel" }, loadingBar("Loading…"));
     shell("people", h("div", { class: "detail" },
       h("h1", {}, icon("people"), " People"),
       h("p", { class: "muted", text: "Create a sign-in for family or friends so they can build and manage their own labs and services — without sharing your Proxmox password." }),

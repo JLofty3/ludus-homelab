@@ -106,7 +106,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .small { font-size: 0.875rem; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [hidden] { display: none !important; }
-.num { font-family: var(--display); font-variant-numeric: tabular-nums; }
 
 /* ---------- top control bar ---------- */
 .topbar {
@@ -135,7 +134,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :root[data-theme="dark"] .nav a[aria-current="page"],
 :root:not([data-theme="light"]) .nav a[aria-current="page"] { color: var(--accent-ink); }
 .who { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; color: var(--ink-2); }
-.who .whoami { display: inline-flex; align-items: center; gap: 7px; }
 
 main { max-width: 1440px; margin: 0 auto; padding: var(--gutter); }
 
@@ -380,9 +378,7 @@ details[open] > summary::before { transform: rotate(90deg); }
 
 /* ---------- icons ---------- */
 .ico { width: 1.15em; height: 1.15em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.2em; }
-.ico-lg { width: 1.9em; height: 1.9em; stroke-width: 1.5; }
 .nav a .ico { margin-right: 7px; }
-.vm-os { display: inline-flex; align-items: center; gap: 7px; }
 .k-windows { --c: var(--cable-1); } .k-linux { --c: var(--cable-2); }
 .k-kali { --c: var(--cable-attack); } .k-tool { --c: var(--cable-tools); }
 .k-router { --c: var(--ink-2); } .k-dc { --c: var(--cable-3); }
@@ -488,19 +484,46 @@ details[open] > summary::before { transform: rotate(90deg); }
 /* ---------- motion: one gentle reveal ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .reveal { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-.reveal-2 { animation-delay: 0.07s; }
-.reveal-3 { animation-delay: 0.14s; }
 .build .steps .step { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .build .steps .step:nth-child(2) { animation-delay: 0.05s; }
 .build .steps .step:nth-child(3) { animation-delay: 0.1s; }
 .build .steps .step:nth-child(4) { animation-delay: 0.15s; }
-@keyframes flash { from { background: var(--accent-wash); } to { background: transparent; } }
-.just-updated { animation: flash 1s ease; }
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .reveal-2, .reveal-3, .build .steps .step, .just-updated, .tag.is-new { animation: none; }
+  .reveal, .build .steps .step, .tag.is-new { animation: none; }
   .lab-option:hover { transform: none; }
   .spinner { animation-duration: 2.4s; }
   .mb-fill { transition: none; }
+}
+
+/* ---------- loading: shimmer skeletons + indeterminate progress ---------- */
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.skeleton { background: linear-gradient(100deg, var(--sunk) 30%, var(--line-soft) 48%, var(--sunk) 66%);
+  background-size: 220% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: var(--r-sm); }
+.sk-stack { display: grid; gap: 11px; }
+.sk-line { height: 0.8rem; }
+.sk-stack .sk-line:last-child { width: 55%; }
+.sk-card { height: 118px; border-radius: var(--r-md); }
+
+@keyframes indet { 0% { transform: translateX(-120%); } 100% { transform: translateX(460%); } }
+.progress { position: relative; height: 5px; border-radius: 3px; background: var(--sunk); overflow: hidden; border: 1px solid var(--line); }
+.progress > span { position: absolute; inset: 0; width: 22%; border-radius: 3px; background: var(--accent); animation: indet 1.25s cubic-bezier(0.45, 0, 0.3, 1) infinite; }
+.progress.calm > span { background: var(--cable-1); }
+.loading { display: grid; gap: 12px; }
+
+/* deploy-in-progress banner on a lab's page */
+.deploy-progress { display: grid; gap: 11px; padding: 14px 16px; margin-bottom: 2px;
+  border: 1px solid color-mix(in oklab, var(--warn) 42%, var(--line)); border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--warn) 9%, transparent); }
+.deploy-progress .dp-head { display: flex; align-items: center; gap: 9px; font-weight: 600; }
+.deploy-progress .dp-head .ico { color: var(--warn); }
+.deploy-progress .dp-sub { color: var(--ink-2); font-size: 0.88rem; }
+
+.ram-bar .this, .ram-bar .used, .host-mem .meter span, .mb-fill { transition: width 0.55s cubic-bezier(0.4, 0, 0.2, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+  .progress > span { animation: none; left: 0; width: 100%; opacity: 0.5; transform: none; }
+  .ram-bar .this, .ram-bar .used, .host-mem .meter span { transition: none; }
 }
 
 /* First-run getting-started */

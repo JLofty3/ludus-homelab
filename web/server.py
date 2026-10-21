@@ -1124,8 +1124,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._error(400, "Enter your username and password.")
         # A bare username that matches an account the admin created signs in locally.
         bare = username.lower()
-        if "@" not in username and bare in load_accounts():
-            if verify_password(password, load_accounts()[bare].get("password") or {}):
+        accounts = load_accounts()
+        if "@" not in username and bare in accounts:
+            if verify_password(password, accounts[bare].get("password") or {}):
                 with FAILURES_LOCK:
                     FAILURES.pop(ip, None)
                 token = new_session(bare, admin=False)
@@ -1163,6 +1164,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._json(200, delete_account(urllib.parse.unquote(username)))
 
     def api_setup_done(self, user):
+        if not self._is_admin():
+            raise ApiError(403, "Only the admin account can dismiss the setup page.")
         mark_setup_done()
         self._json(200, {"ok": True})
 
