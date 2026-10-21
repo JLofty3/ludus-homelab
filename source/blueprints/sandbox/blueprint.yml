@@ -1,0 +1,10 @@
+manifest_version: 1
+id: sandbox
+name: "Single VM Sandbox"
+description: "One machine to tinker with - pick any Windows or Linux OS, size it, and pre-install apps. No domain, no extra network."
+version: 1.0.0
+tags:
+  - sandbox
+  - homelab
+min_ludus_version: "2.0.0"
+config: range-config.yml

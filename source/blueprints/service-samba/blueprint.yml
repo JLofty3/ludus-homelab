@@ -1,0 +1,11 @@
+manifest_version: 1
+id: service-samba
+name: "Samba File Share"
+description: "A private, password-protected network drive on your LAN. Map it from Windows, macOS or Linux."
+version: 1.0.0
+tags:
+  - service
+  - fileshare
+  - homelab
+min_ludus_version: "2.0.0"
+config: range-config.yml

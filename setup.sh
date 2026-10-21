@@ -123,6 +123,11 @@ for f in lab lab-update fix-kali lib/labcore.py web/server.py web/static/index.h
          source/ansible/roles/homelab_minecraft/tasks/main.yml source/ansible/roles/homelab_jellyfin/tasks/main.yml source/ansible/roles/homelab_samba/tasks/main.yml; do
   [[ -e "$HERE/$f" ]] || die "Missing $f next to setup.sh - unpack the whole ludus-homelab folder and run it from there."
 done
+# Every blueprint dir needs a blueprint.yml manifest - Ludus silently skips a
+# blueprint that only has a range-config.yml, so it would never appear.
+for bp in "$HERE"/source/blueprints/*/; do
+  [[ -f "${bp}blueprint.yml" ]] || die "Blueprint $(basename "$bp") is missing blueprint.yml - it won't register with Ludus."
+done
 if ! python3 -c 'import yaml' 2>/dev/null; then
   say "Installing python3-yaml"
   apt-get install -y -qq python3-yaml >/dev/null

@@ -1,0 +1,11 @@
+manifest_version: 1
+id: service-jellyfin
+name: "Jellyfin Media Server"
+description: "Your own streaming service for the movies, shows and music you own. Finish setup in the browser."
+version: 1.0.0
+tags:
+  - service
+  - media
+  - homelab
+min_ludus_version: "2.0.0"
+config: range-config.yml
