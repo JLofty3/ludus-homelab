@@ -72,6 +72,10 @@ in Safari (iOS) or Chrome (Android), use **Share -> Add to Home Screen**: it get
 its own icon and opens full-screen like an app, so you can power labs on and off,
 watch a build, or check the node from the sofa.
 
+To stop the certificate warning on every visit, install the node's certificate
+once from **Connect -> Trust this site on your devices** (see [Trusting the site
+on your devices](#trusting-the-site-on-your-devices)).
+
 To reach it from *outside* your network — on cellular, away from home — you need
 a way into your LAN: a VPN (WireGuard or Tailscale are the usual homelab picks)
 or a port-forward. On your home Wi-Fi it just works at the node's address.
@@ -252,9 +256,12 @@ Re-running `setup.sh` is safe; do it after editing the catalogue.
 
 ## 4. Build a lab
 
-Open `https://<node-ip>:8443` in your browser. It uses a self-signed certificate,
-so accept the warning once, like you do for Proxmox. Sign in with your Ludus
-admin's Proxmox username and password (`setup.sh` prints the name), or with `root`.
+Open `https://<node-ip>:8443` in your browser. Your browser shows a certificate
+warning the first time (the GUI signs its own certificate); accept it once, like
+you do for Proxmox - or remove it for good by installing the node's certificate,
+see [Trusting the site on your devices](#trusting-the-site-on-your-devices). Sign
+in with your Ludus admin's Proxmox username and password (`setup.sh` prints the
+name), or with `root`.
 
 1. Pick a lab.
 2. Change its settings and OS versions.
@@ -328,7 +335,11 @@ GUI and the menu straight away. The range config format is documented at
 - Sign-in is checked by Proxmox itself, so there's no extra password to manage.
   Only `root` and Ludus admins can sign in. Accounts with two-factor sign-in
   aren't supported. Five wrong passwords lock that address out for 10 minutes.
-- HTTPS uses a self-signed certificate in `/etc/ludus-lab/tls/`. Sessions last 12 hours.
+- HTTPS is served with a certificate signed by a small local certificate
+  authority that `setup.sh` creates on the node (in `/etc/ludus-lab/tls/`). The
+  authority's private key stays root-only and never leaves the node; install the
+  authority on your devices to drop the browser warning (see below). Sessions
+  last 12 hours.
 - It's meant for your home network, like the Proxmox UI. Don't port-forward
   8443 to the internet.
 - Restart it with `systemctl restart ludus-lab-web`, and read its log with
@@ -344,6 +355,32 @@ GUI and the menu straight away. The range config format is documented at
 - The icons and the sign-in artwork are original line drawings generated in the
   page itself (no third-party logos, no stock photos, no external image or font
   requests), so the GUI loads fully offline and nothing phones home.
+
+### Trusting the site on your devices
+
+The browser warning appears because the GUI's certificate is signed by the
+node's own certificate authority rather than a public one. Install that authority
+on a device once and the warning is gone for good on that device - handy on a
+phone, where dismissing the warning every visit gets old.
+
+Open **Connect** in the GUI and find **Trust this site on your devices**. It has a
+**Download the certificate** button (also at `https://<node-ip>:8443/ca.crt`), the
+authority's SHA-256 fingerprint so you can confirm you have the right file, and
+step-by-step instructions for each platform:
+
+- **iPhone / iPad:** download in Safari, then Settings -> General -> VPN & Device
+  Management to install the profile, and Settings -> General -> About ->
+  Certificate Trust Settings to turn on full trust.
+- **Android:** download it, then Settings -> search "CA certificate" -> install
+  from storage. Chrome and Firefox honour it (some apps ignore user authorities).
+- **Windows:** double-click the file -> Install Certificate -> Local Machine ->
+  Trusted Root Certification Authorities (or `certutil -addstore -f Root` as admin).
+- **macOS:** open it in Keychain Access, then set it to Always Trust.
+
+Only the public certificate is ever served; the authority's private key stays in
+a root-only file on the node. The certificate covers the node's IP, so if that IP
+changes, re-run `setup.sh` to re-issue it (the authority, and the trust you've
+already set up, stay the same).
 
 ### Live monitoring and password reset
 

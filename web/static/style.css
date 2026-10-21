@@ -347,6 +347,18 @@ summary::-webkit-details-marker { display: none; }
 summary::before { content: ""; width: 0; height: 0; border-left: 6px solid var(--ink-2); border-block: 5px solid transparent; transition: transform 0.15s; }
 details[open] > summary::before { transform: rotate(90deg); }
 
+/* ---------- trust-this-site (local CA) panel ---------- */
+.cert-fp { font-family: var(--mono); font-size: 0.82rem; word-break: break-all; color: var(--ink); }
+.cert-heading { margin: 16px 0 6px; font-weight: 600; }
+.cert-os { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 8px; background: var(--sunk); }
+.cert-os + .cert-os { margin-top: 6px; }
+.cert-os > summary { font-weight: 600; }
+.cert-os > summary .ico { width: 18px; height: 18px; color: var(--ink-2); }
+.cert-os[open] > summary { margin-bottom: 8px; }
+.cert-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.cert-steps li { line-height: 1.45; }
+.cert-os .cmd { margin-top: 6px; }
+
 .log { margin: 0; padding: 14px; max-height: 420px; overflow: auto; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r-sm); font: 0.78rem/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; }
 .inline-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .inline-form .field { min-width: 200px; flex: 1; }

@@ -335,18 +335,58 @@ fi
 )
 chown root:"$WEB_USER" "$WEB_ETC/env"; chmod 640 "$WEB_ETC/env"
 
+# --- HTTPS certificate, signed by a small local certificate authority --------
+# The GUI is served over HTTPS. A self-signed cert makes every browser show a
+# warning; instead we run a tiny local CA (created once, kept across runs) and
+# have it sign the server's certificate. Install the CA on a phone or laptop
+# once - the GUI offers it for download at /ca.crt - and the warning is gone for
+# good on that device. The CA's private key never leaves the node and is never
+# served.
 NODE_IP="$(sed -n 's/^proxmox_local_ip: *//p' "$LUDUS_DIR/config.yml" 2>/dev/null | tr -d "'\" " || true)"
 [[ -n "$NODE_IP" ]] || NODE_IP="$(hostname -I | awk '{print $1}')"
-if [[ ! -s "$WEB_ETC/tls/cert.pem" || ! -s "$WEB_ETC/tls/key.pem" ]] \
-   || ! openssl x509 -in "$WEB_ETC/tls/cert.pem" -noout -ext subjectAltName 2>/dev/null | grep -q "IP Address:$NODE_IP"; then
-  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -sha256 \
-    -subj "/CN=$(hostname) lab builder" \
-    -addext "subjectAltName=IP:$NODE_IP,DNS:$(hostname),DNS:localhost" \
-    -keyout "$WEB_ETC/tls/key.pem" -out "$WEB_ETC/tls/cert.pem" >/dev/null 2>&1 \
-    || die "Couldn't create the GUI's HTTPS certificate (is openssl installed?)."
+CA_KEY="$WEB_ETC/tls/ca.key"; CA_CRT="$WEB_ETC/tls/ca.crt"
+SRV_KEY="$WEB_ETC/tls/key.pem"; SRV_CRT="$WEB_ETC/tls/cert.pem"
+
+# 1. The certificate authority: create once, then leave it untouched so that
+#    copies already installed on your devices keep working.
+if [[ ! -s "$CA_KEY" || ! -s "$CA_CRT" ]]; then
+  openssl req -x509 -newkey rsa:4096 -nodes -days 3650 -sha256 \
+    -subj "/O=Lab builder/CN=Lab builder local CA ($(hostname))" \
+    -addext "basicConstraints=critical,CA:TRUE,pathlen:0" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -keyout "$CA_KEY" -out "$CA_CRT" >/dev/null 2>&1 \
+    || die "Couldn't create the local certificate authority (is openssl installed?)."
 fi
-chown root:"$WEB_USER" "$WEB_ETC/tls/key.pem" "$WEB_ETC/tls/cert.pem"
-chmod 640 "$WEB_ETC/tls/key.pem"; chmod 644 "$WEB_ETC/tls/cert.pem"
+
+# 2. The server certificate: (re)issue if it's missing, if this node's IP isn't
+#    in it, or if it's no longer signed by the current CA. Apple devices only
+#    trust leaf certs valid for 825 days or fewer and require a SAN plus the
+#    serverAuth usage, so the cert is built to those rules.
+if [[ ! -s "$SRV_CRT" || ! -s "$SRV_KEY" ]] \
+   || ! openssl x509 -in "$SRV_CRT" -noout -ext subjectAltName 2>/dev/null | grep -q "IP Address:$NODE_IP" \
+   || ! openssl verify -CAfile "$CA_CRT" "$SRV_CRT" >/dev/null 2>&1; then
+  SRV_EXT="$WEB_ETC/tls/server-ext.cnf"
+  {
+    printf '[ v3_srv ]\n'
+    printf 'basicConstraints=CA:FALSE\n'
+    printf 'keyUsage=critical,digitalSignature,keyEncipherment\n'
+    printf 'extendedKeyUsage=serverAuth\n'
+    printf 'subjectAltName=IP:%s,IP:127.0.0.1,DNS:%s,DNS:localhost\n' "$NODE_IP" "$(hostname)"
+  } > "$SRV_EXT"
+  { openssl req -newkey rsa:2048 -nodes -keyout "$SRV_KEY.tmp" -out "$WEB_ETC/tls/server.csr" \
+      -subj "/CN=$NODE_IP" >/dev/null 2>&1 \
+    && openssl x509 -req -in "$WEB_ETC/tls/server.csr" -CA "$CA_CRT" -CAkey "$CA_KEY" -CAcreateserial \
+      -days 825 -sha256 -extfile "$SRV_EXT" -extensions v3_srv -out "$SRV_CRT.tmp" >/dev/null 2>&1; } \
+    || die "Couldn't create the GUI's HTTPS certificate (is openssl installed?)."
+  mv -f "$SRV_KEY.tmp" "$SRV_KEY"; mv -f "$SRV_CRT.tmp" "$SRV_CRT"
+  rm -f "$WEB_ETC/tls/server.csr" "$SRV_EXT"
+fi
+
+chown root:root "$CA_KEY"                     # CA private key: root only, the web service never touches it
+chown root:"$WEB_USER" "$CA_CRT" "$SRV_KEY" "$SRV_CRT"
+chmod 600 "$CA_KEY"                           # crown jewels: readable by root alone
+chmod 644 "$CA_CRT" "$SRV_CRT"                # the two certificates are public
+chmod 640 "$SRV_KEY"                          # server key: readable by the web service group only
 
 if ss -ltnH "sport = :$WEB_PORT" 2>/dev/null | grep -q . && ! systemctl is-active --quiet ludus-lab-web; then
   warn "Something else is already listening on port $WEB_PORT. Edit LAB_WEB_PORT in $WEB_UNIT and re-run."
@@ -369,6 +409,7 @@ Environment=LAB_WEB_TMP=$WEB_HOME/tmp
 Environment=LAB_WEB_PORT=$WEB_PORT
 Environment=LAB_WEB_CERT=$WEB_ETC/tls/cert.pem
 Environment=LAB_WEB_KEY=$WEB_ETC/tls/key.pem
+Environment=LAB_WEB_CA=$WEB_ETC/tls/ca.crt
 ExecStart=/usr/bin/python3 -I -u $APP_DIR/web/server.py
 Restart=on-failure
 RestartSec=5

@@ -46,6 +46,7 @@ BIND = os.environ.get("LAB_WEB_BIND", "0.0.0.0")
 PORT = int(os.environ.get("LAB_WEB_PORT", "8443"))
 CERT = os.environ.get("LAB_WEB_CERT", "/etc/ludus-lab/tls/cert.pem")
 KEY = os.environ.get("LAB_WEB_KEY", "/etc/ludus-lab/tls/key.pem")
+CA = os.environ.get("LAB_WEB_CA", "/etc/ludus-lab/tls/ca.crt")
 PLAIN_HTTP = os.environ.get("LAB_WEB_PLAIN_HTTP") == "1"
 PROXMOX_URL = os.environ.get("PROXMOX_URL", "https://127.0.0.1:8006").rstrip("/")
 PROXMOX_NODE = os.environ.get("PROXMOX_NODE", "")
@@ -464,6 +465,28 @@ def trigger_update():
         raise ApiError(502, "Couldn't request the update here. Run it on the node instead "
                             "(the command is shown below).")
     return {"message": "Update started. This page reloads once it's back on the new version.", "started": True}
+
+
+def cert_info():
+    """Summary of the local certificate authority for the 'trust this site on
+    your devices' panel: whether a CA exists to download, its SHA-256
+    fingerprint (so you can confirm you're installing the right one) and when it
+    expires. The fingerprint and dates come from the public CA cert only."""
+    info = {"available": os.path.isfile(CA), "download": "/ca.crt"}
+    if not info["available"]:
+        return info
+    try:
+        with open(CA) as fh:
+            der = ssl.PEM_cert_to_DER_cert(fh.read())
+        fp = hashlib.sha256(der).hexdigest().upper()
+        info["fingerprint"] = ":".join(fp[i:i + 2] for i in range(0, len(fp), 2))
+    except (OSError, ValueError):
+        pass
+    try:
+        info["expires"] = ssl._ssl._test_decode_cert(CA).get("notAfter")
+    except (OSError, AttributeError, ValueError):
+        pass
+    return info
 
 
 # --------------------------------------------------------------------------
@@ -1018,6 +1041,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
+        if path == "/ca.crt":
+            return self._send_ca()
         if not path.startswith("/api/"):
             return self._static(path)
         self._api("GET", path)
@@ -1037,6 +1062,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self._same_origin():
             return self._error(403, "Request blocked: it didn't come from this page.")
         self._api("DELETE", path)
+
+    def _send_ca(self):
+        # The local CA's public certificate, offered for download so it can be
+        # installed as trusted on phones and laptops. This is only the public
+        # cert - the CA's private key lives in a root-only file and is never
+        # served. No sign-in required: a public cert is safe to hand out.
+        try:
+            with open(CA, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return self._error(404, "No certificate authority has been set up on this node.")
+        self._send(200, body, "application/x-x509-ca-cert",
+                   headers={"Content-Disposition": 'attachment; filename="lab-builder-ca.crt"'})
 
     def _static(self, path):
         if path in ("/", "/index.html"):
@@ -1084,6 +1122,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ("POST", r"/api/templates/build", "templates_build", True),
         ("GET", r"/api/wireguard", "wireguard", True),
         ("GET", r"/api/updates", "updates", True),
+        ("GET", r"/api/cert", "cert", True),
         ("POST", r"/api/update", "update", True),
         ("POST", r"/api/refresh", "refresh", True),
         ("POST", r"/api/reset", "reset", True),
@@ -1228,6 +1267,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def api_updates(self, user):
         self._json(200, update_info())
+
+    def api_cert(self, user):
+        self._json(200, cert_info())
 
     def api_update(self, user):
         if not self._is_admin():

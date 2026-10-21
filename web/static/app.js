@@ -87,6 +87,8 @@
     logo: [["rect", { x: 3, y: 4, width: 11, height: 16, rx: 2.5 }], ["path", { d: "M14 8.5h6M14 12h5M14 15.5h3" }],
       ["circle", { cx: 7, cy: 8, r: 1.1, fill: "currentColor", stroke: "none" }], ["circle", { cx: 7, cy: 12, r: 1.1, fill: "currentColor", stroke: "none" }]],
     check: [["path", { d: "M4.5 12.5l4.5 4.5L19.5 6.5" }]],
+    shield: [["path", { d: "M12 3l7 3v5c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z" }], ["path", { d: "M9 12l2 2 4-4" }]],
+    phone: [["rect", { x: 7, y: 2.5, width: 10, height: 19, rx: 2 }], ["path", { d: "M11 18.5h2" }]],
     people: [["circle", { cx: 8, cy: 8, r: 2.6 }], ["circle", { cx: 16, cy: 8, r: 2.6 }],
       ["path", { d: "M3.5 19v-1a4 4 0 014-4h1a4 4 0 013.4 1.9M12.6 15.9A4 4 0 0115.5 14h1a4 4 0 014 4v1" }]],
   };
@@ -1171,7 +1173,64 @@
         scrollTable(h("thead", {}, h("tr", {}, ["Machine", "Username", "Password"].map((t) => h("th", { text: t })))),
           h("tbody", {}, creds.map(([m, u, p]) => h("tr", {}, h("td", { text: m }), h("td", { text: u }), h("td", { text: p }))))),
         h("p", { class: "help", text: "Security tool logins (Kibana, Wazuh, Velociraptor) are on each lab's page. These passwords are deliberately weak: keep labs on their private networks." })),
+      certPanel(),
     ));
+  }
+
+  function certPanel() {
+    const fp = h("code", { class: "cert-fp", text: "checking…" });
+    const expires = h("span", { text: "—" });
+    const dl = h("a", { class: "btn btn-build", href: "/ca.crt", download: "lab-builder-ca.crt" },
+      icon("download"), " Download the certificate");
+
+    const steps = (...items) => h("ol", { class: "cert-steps" }, items.map((t) => h("li", { text: t })));
+    const os = (name, ico, content) => h("details", { class: "cert-os" },
+      h("summary", {}, icon(ico), h("span", { text: name })), content);
+
+    const body = h("div", { class: "cert-body" },
+      h("p", { text: "Your browser warns about this site because its certificate is signed by this node's own private authority, not a public one. Install that authority on a device once and the warning is gone for good on that device." }),
+      h("div", { class: "toolbar" }, dl),
+      h("p", { class: "help" }, "Fingerprint (SHA-256): ", fp, h("br"),
+        "Confirm it matches after downloading. The authority is valid until ", expires, "."),
+      h("p", { class: "cert-heading", text: "Then install it:" }),
+      os("iPhone / iPad", "phone", steps(
+        "Open this page in Safari (not another browser) and tap Download the certificate above, then tap Allow and Close.",
+        "Open Settings → General → VPN & Device Management, tap the “Lab builder local CA” profile, and tap Install (enter your passcode).",
+        "Open Settings → General → About → Certificate Trust Settings and turn on full trust for “Lab builder local CA”.")),
+      os("Android", "phone", steps(
+        "Tap Download the certificate above.",
+        "Open Settings and search for “CA certificate” (often under Security → More security settings → Install from storage), choose the downloaded file and confirm.",
+        "The browser will now trust the site. Some apps ignore user-installed authorities, but Chrome and Firefox honour them.")),
+      os("Windows", "windows", h("div", {},
+        steps(
+          "Download the certificate, then double-click lab-builder-ca.crt.",
+          "Click Install Certificate → Local Machine → Next, choose “Place all certificates in the following store”, Browse to “Trusted Root Certification Authorities”, then Finish."),
+        h("p", { class: "muted", text: "Or, from an Administrator terminal:" }),
+        cmdLine("certutil -addstore -f Root lab-builder-ca.crt"))),
+      os("macOS", "disk", steps(
+        "Download the certificate and double-click it; Keychain Access opens and adds it to your login keychain.",
+        "Find “Lab builder local CA”, double-click it, expand Trust, and set “When using this certificate” to Always Trust. Close the window and enter your password.")),
+      h("p", { class: "muted", text: "This file is only the public certificate — the authority's private key never leaves the node and is never downloadable." }));
+
+    const panel = h("div", { class: "panel" },
+      h("h3", {}, icon("shield"), " Trust this site on your devices"), body);
+
+    (async () => {
+      try {
+        const info = await api("GET", "/api/cert");
+        if (!info || !info.available) {
+          body.replaceChildren(h("p", { class: "help" }, icon("warning"),
+            " No certificate authority is set up on this node yet. Re-run setup.sh on the node to create one, then reload this page."));
+          return;
+        }
+        fp.textContent = info.fingerprint || "unavailable";
+        expires.textContent = info.expires || "—";
+      } catch (err) {
+        fp.textContent = "unavailable";
+      }
+    })();
+
+    return panel;
   }
 
   // ---------------------------------------------------------------- updates
