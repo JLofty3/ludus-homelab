@@ -395,13 +395,24 @@ if ! grep -qs 'ludus-lab/env' /root/.bashrc; then
 fi
 
 # --------------------------------------------------------------------------
-# Let the web GUI trigger an update with one click. The web service (unprivileged)
-# gets to start ONE root systemd unit - nothing else - via a scoped sudoers rule
-# that is syntax-checked before install. The unit runs in its own cgroup, so it
-# survives the web service restart that the update performs.
+# Let the web GUI trigger an update with one click - without sudo, which Proxmox
+# nodes usually don't have installed (everything there runs as root). The
+# unprivileged web service only ever creates one file, inside its own data dir
+# (the single path its systemd sandbox lets it write to). A root-owned systemd
+# .path unit watches for that file and starts the update unit, which runs the
+# root-owned lab-update script in its own cgroup (so it survives the web service
+# restart the update performs). The web user can do nothing else - it can't
+# change the unit or the script, only ask for the one update to run.
+rm -f /etc/sudoers.d/ludus-lab-update 2>/dev/null || true   # drop any rule from older versions
 LAB_UPDATE_WEB=0
-LAB_UPDATE_SYSCTL="$(command -v systemctl || true)"
-if [[ -n "$LAB_UPDATE_SYSCTL" ]]; then
+LAB_UPDATE_TRIGGER="$WEB_HOME/update-request"   # inside ReadWritePaths= of the web unit
+if command -v systemctl >/dev/null 2>&1; then
+  SYSCTL_BIN="$(command -v systemctl)"
+  # Give the triggered update the same HOME and PATH the admin had when they
+  # ran setup by hand, so git, ludus and ansible-galaxy resolve the same way
+  # under systemd's otherwise-minimal environment.
+  UNIT_HOME="${HOME:-/root}"
+  UNIT_PATH="${PATH:-/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin}"
   cat > /etc/systemd/system/ludus-lab-update.service <<UNIT
 [Unit]
 Description=Pull and apply the latest lab builder version
@@ -409,24 +420,52 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# the update runs git + ansible-galaxy + setup.sh, which can take several
+# minutes - disable the start timeout so systemd never kills it partway
+TimeoutStartSec=infinity
+Environment=HOME=${UNIT_HOME}
+Environment=PATH=${UNIT_PATH}
+ExecStartPre=-/bin/rm -f ${LAB_UPDATE_TRIGGER}
 ExecStart=/usr/local/bin/lab-update
+# Always bounce the web GUI at the end - even when there was nothing new to
+# pull - so the page gets a reliable "done" signal to reload on.
+ExecStartPost=-${SYSCTL_BIN} restart ludus-lab-web
 UNIT
+
+  cat > /etc/systemd/system/ludus-lab-update.path <<UNIT
+[Unit]
+Description=Watch for a lab builder update request from the web GUI
+
+[Path]
+PathExists=${LAB_UPDATE_TRIGGER}
+Unit=ludus-lab-update.service
+
+[Install]
+WantedBy=paths.target
+UNIT
+
   systemctl daemon-reload || true
-  SUDOERS=/etc/sudoers.d/ludus-lab-update
-  printf '%s ALL=(root) NOPASSWD: %s start --no-block ludus-lab-update.service\n' "$WEB_USER" "$LAB_UPDATE_SYSCTL" > "$SUDOERS.tmp"
-  if visudo -cf "$SUDOERS.tmp" >/dev/null 2>&1; then
-    install -m 440 -o root -g root "$SUDOERS.tmp" "$SUDOERS"
-    rm -f "$SUDOERS.tmp"
+  rm -f "$LAB_UPDATE_TRIGGER" 2>/dev/null || true   # clear any stale request
+  if systemctl enable --now ludus-lab-update.path >/dev/null 2>&1; then
     LAB_UPDATE_WEB=1
-    ok "Web GUI can trigger updates (scoped to the update command only)"
+    ok "Web GUI can trigger updates (no sudo needed; scoped to the update unit only)"
   else
-    rm -f "$SUDOERS.tmp"
-    warn "Couldn't install the update sudoers rule; the GUI will show the command instead."
+    warn "Couldn't set up one-click updates; the GUI will show the update command instead."
   fi
 fi
-# Record the web-update setting for the GUI (the env file is rewritten each run).
+
+# The update command to show in the GUI: use sudo only if it's actually present
+# (Proxmox is usually operated as root with no sudo package installed).
+if command -v sudo >/dev/null 2>&1; then
+  LAB_UPDATE_CMD="sudo lab-update"
+else
+  LAB_UPDATE_CMD="lab-update"
+fi
+
+# Record the web-update settings for the GUI (the env file is rewritten each run).
 { printf "LAB_UPDATE_WEB='%s'\n" "$LAB_UPDATE_WEB"
-  printf "LAB_UPDATE_SYSCTL='%s'\n" "$LAB_UPDATE_SYSCTL"; } >> "$WEB_ETC/env"
+  printf "LAB_UPDATE_TRIGGER='%s'\n" "$LAB_UPDATE_TRIGGER"
+  printf "LAB_UPDATE_CMD='%s'\n" "$LAB_UPDATE_CMD"; } >> "$WEB_ETC/env"
 systemctl restart ludus-lab-web >/dev/null 2>&1 || true   # pick up the new env
 
 # --------------------------------------------------------------------------

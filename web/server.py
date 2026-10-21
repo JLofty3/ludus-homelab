@@ -23,10 +23,8 @@ import mimetypes
 import os
 import re
 import secrets
-import shutil
 import socket
 import ssl
-import subprocess
 import sys
 import threading
 import time
@@ -58,7 +56,8 @@ LAB_UPDATE_DIR = os.environ.get("LAB_UPDATE_DIR", "")
 LAB_UPDATE_GIT = os.environ.get("LAB_UPDATE_GIT") == "1"
 LAB_UPDATE_REPO = os.environ.get("LAB_UPDATE_REPO", "")
 LAB_UPDATE_WEB = os.environ.get("LAB_UPDATE_WEB") == "1"
-LAB_UPDATE_SYSCTL = os.environ.get("LAB_UPDATE_SYSCTL", "")
+LAB_UPDATE_TRIGGER = os.environ.get("LAB_UPDATE_TRIGGER", "")
+LAB_UPDATE_CMD = os.environ.get("LAB_UPDATE_CMD", "sudo lab-update")
 TMP_DIR = os.environ.get("LAB_WEB_TMP", "/var/lib/ludus-lab/tmp")
 SESSION_TTL = 12 * 3600
 MAX_BODY = 64 * 1024
@@ -339,9 +338,9 @@ def _latest_remote_version():
 
 
 def update_info():
-    info = {"version": core.VERSION, "git": LAB_UPDATE_GIT, "command": "sudo lab-update",
+    info = {"version": core.VERSION, "git": LAB_UPDATE_GIT, "command": LAB_UPDATE_CMD,
             "repo": LAB_UPDATE_REPO or None, "latest": None, "newer": False,
-            "web_update": LAB_UPDATE_WEB and LAB_UPDATE_GIT}
+            "web_update": LAB_UPDATE_WEB and LAB_UPDATE_GIT and bool(LAB_UPDATE_TRIGGER)}
     if LAB_UPDATE_GIT and LAB_UPDATE_REPO:
         latest = CACHE.get("update-latest", 900, _latest_remote_version)
         if latest:
@@ -351,20 +350,26 @@ def update_info():
 
 
 def trigger_update():
-    """Start the scoped root updater unit. The web user can start only this one
-    unit (enforced by the sudoers rule setup.sh installs) - nothing else."""
-    if not (LAB_UPDATE_WEB and LAB_UPDATE_GIT):
-        raise ApiError(400, "Web updates aren't enabled here. Run `sudo lab-update` on the node, "
-                            "or re-run setup.sh to turn this on.")
-    sysctl = LAB_UPDATE_SYSCTL or shutil.which("systemctl") or "systemctl"
-    # --no-block: the unit is Type=oneshot, so a plain `start` would wait for the
-    # whole update to finish (minutes). --no-block queues it and returns at once.
-    # The sudoers rule setup.sh installs permits exactly this argument vector.
+    """Request an update by touching the trigger file. A root-owned systemd .path
+    unit watches that file and starts ludus-lab-update.service (which runs the
+    root-owned lab-update script). The web service itself stays unprivileged and
+    needs no sudo - all it can do is create this one file, which Proxmox nodes
+    allow even without the sudo package installed."""
+    if not (LAB_UPDATE_WEB and LAB_UPDATE_GIT and LAB_UPDATE_TRIGGER):
+        raise ApiError(400, "Web updates aren't enabled here. Run the update on the node "
+                            "(the command is shown below), or re-run setup.sh to turn this on.")
     try:
-        subprocess.run(["sudo", "-n", sysctl, "start", "--no-block", "ludus-lab-update.service"],
-                       check=True, timeout=30, capture_output=True)
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
-        raise ApiError(502, "Couldn't start the update. Run `sudo lab-update` on the node instead.")
+        d = os.path.dirname(LAB_UPDATE_TRIGGER)
+        if d and not os.path.isdir(d):
+            raise OSError("trigger directory is missing")
+        # atomic: write a temp file in the same dir, then rename onto the trigger
+        tmp = LAB_UPDATE_TRIGGER + ".new"
+        with open(tmp, "w") as fh:
+            fh.write("update\n")
+        os.replace(tmp, LAB_UPDATE_TRIGGER)
+    except OSError:
+        raise ApiError(502, "Couldn't request the update here. Run it on the node instead "
+                            "(the command is shown below).")
     return {"message": "Update started. This page reloads once it's back on the new version.", "started": True}
 
 

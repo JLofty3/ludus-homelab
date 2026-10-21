@@ -350,29 +350,34 @@ cd ludus-homelab
 ./setup.sh
 ```
 
-`setup.sh` installs a `lab-update` command, so from then on updating is just:
+`setup.sh` installs a `lab-update` command, so from then on updating from a
+terminal is just:
 
 ```
-sudo lab-update
+lab-update          # you're root on Proxmox, so no sudo needed
 ```
 
-It pulls the latest version and re-runs `setup.sh`, which is safe to run any
-time and never touches running labs.
+(If you operate the node through `sudo`, use `sudo lab-update` instead — the
+GUI shows whichever form applies to your node.) It pulls the latest version and
+re-runs `setup.sh`, which is safe to run any time and never touches running
+labs.
 
 **One-click updates from the GUI.** The **Updates** page shows your current
 version. Once the install is Git-based (set up as below), that page also gets
 an **Update now** button — click it and the node pulls the latest and
 re-applies it, then the page reloads on the new version. No SSH, no commands.
 
-The button is wired up with a deliberately tight privilege boundary. The web
-service itself runs unprivileged and can't touch the system. `setup.sh`
-installs a one-line `sudoers` rule (syntax-checked with `visudo` before it's
-written) that lets the web user start exactly one thing — the root
-`ludus-lab-update.service` unit — and nothing else: no other units, no extra
-arguments, no shell. That unit runs the same root-owned `lab-update` script
-you'd run by hand. If the rule can't be installed for any reason, the page just
-falls back to showing the `sudo lab-update` command. The **Updates** page also
-has a box for sending feature requests.
+The button has a deliberately tight privilege boundary, and needs **no `sudo`**
+(Proxmox nodes usually don't have it installed). The web service runs
+unprivileged and can't touch the system. All it can do is create one file in a
+runtime directory it owns. A root-owned systemd **path unit**
+(`ludus-lab-update.path`) watches for that file and, when it appears, starts
+`ludus-lab-update.service` — which runs the same root-owned `lab-update` script
+you'd run by hand, in its own cgroup so it survives the web-service restart the
+update performs. The web user can't change the unit or the script, only ask for
+that one update to run. If any of that can't be set up, the page falls back to
+showing the update command. The **Updates** page also has a box for sending
+feature requests.
 
 **Making the repo** (one time, free): create an empty private repo on GitHub
 (call it `ludus-homelab`). On your computer, in the folder you unpacked:
@@ -391,9 +396,10 @@ Then `git clone` that URL on the node as shown above.
 **Getting improvements into the repo.** For `lab-update` to pull a new version,
 it has to land in your repo first. The smoothest way: connect your GitHub
 account to Claude (claude.ai → Settings → Connectors), and improvements get
-pushed straight to your repo — then you just run `sudo lab-update` on the node.
-Otherwise you're handed the changed files, drop them into your computer's copy,
-`git commit -am "update" && git push`, and run `sudo lab-update`.
+pushed straight to your repo — then you just click **Update now** in the GUI, or
+run `lab-update` on the node. Otherwise you're handed the changed files, drop
+them into your computer's copy, `git commit -am "update" && git push`, and
+update from the GUI or with `lab-update`.
 
 ### Without Git
 

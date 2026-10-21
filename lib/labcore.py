@@ -17,7 +17,7 @@ import tempfile
 
 import yaml
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 LUDUS = os.environ.get("LUDUS_BIN", "ludus")
 KEY_FILES = [p for p in (os.environ.get("LAB_KEY_FILE"), "/root/.config/ludus-lab/env", "/etc/ludus-lab/env") if p]
 DEFAULT_ROUTER_TEMPLATE = "debian-13-x64-server-template"
