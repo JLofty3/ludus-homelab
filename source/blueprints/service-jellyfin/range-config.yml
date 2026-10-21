@@ -15,7 +15,7 @@ ludus:
     cpus: 4
     linux: true
     roles:
-      - homelab_jellyfin
+      - homelab.homelab_jellyfin
     role_vars:
       jellyfin_media_dir: /srv/media
 

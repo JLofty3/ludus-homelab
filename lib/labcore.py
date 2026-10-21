@@ -17,7 +17,7 @@ import tempfile
 
 import yaml
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 LUDUS = os.environ.get("LUDUS_BIN", "ludus")
 KEY_FILES = [p for p in (os.environ.get("LAB_KEY_FILE"), "/root/.config/ludus-lab/env", "/etc/ludus-lab/env") if p]
 DEFAULT_ROUTER_TEMPLATE = "debian-13-x64-server-template"
@@ -932,7 +932,7 @@ def schema_minecraft(cfg):
 
 
 def apply_minecraft(cfg, o):
-    _apply_service(cfg, o, "homelab_minecraft", {
+    _apply_service(cfg, o, "homelab.homelab_minecraft", {
         "minecraft_flavor": o["flavor"],
         "minecraft_version": str(o["mc_version"]).lower(),
         "minecraft_max_players": int(o["max_players"]),
@@ -957,7 +957,7 @@ def schema_jellyfin(cfg):
 
 
 def apply_jellyfin(cfg, o):
-    _apply_service(cfg, o, "homelab_jellyfin", {"jellyfin_media_dir": o["media_dir"]}, "jellyfin")
+    _apply_service(cfg, o, "homelab.homelab_jellyfin", {"jellyfin_media_dir": o["media_dir"]}, "jellyfin")
 
 
 def schema_samba(cfg):
@@ -975,7 +975,7 @@ def schema_samba(cfg):
 
 
 def apply_samba(cfg, o):
-    _apply_service(cfg, o, "homelab_samba", {
+    _apply_service(cfg, o, "homelab.homelab_samba", {
         "samba_share_name": o["share_name"],
         "samba_share_dir": o["share_dir"],
         "samba_user": o["smb_user"],
@@ -1213,7 +1213,7 @@ def apply_addons(cfg, keys, dfir_template=None):
                 add_role(vm, "aleemladha.ludus_wazuh_agent", (server["vm_name"], "aleemladha.wazuh_server_install"),
                          {"ludus_wazuh_siem_server": manager})
             elif family in ("debian", "redhat"):
-                add_role(vm, "homelab_wazuh_agent_linux", (server["vm_name"], "aleemladha.wazuh_server_install"),
+                add_role(vm, "homelab.homelab_wazuh_agent_linux", (server["vm_name"], "aleemladha.wazuh_server_install"),
                          {"homelab_wazuh_manager": manager})
 
     if "velociraptor" in keys:
@@ -1245,7 +1245,7 @@ def apply_addons(cfg, keys, dfir_template=None):
             # so only add sysmon-modular where Elastic isn't doing it. Wazuh reads the Sysmon
             # channel from this install.
             if "elastic" not in keys:
-                add_role(vm, "homelab_sysmon")
+                add_role(vm, "homelab.homelab_sysmon")
 
     if "ghosts" in keys and windows_endpoints(cfg):
         server = tool_server("ghosts", "ubuntu-24.04-x64-server-template", vlan, 13, 6, 4,
@@ -1275,7 +1275,7 @@ def apply_addons(cfg, keys, dfir_template=None):
             "cpus": 4,
             "windows": {"sysprep": False},
             "ansible_groups": [TOOLS_GROUP],
-            "roles": ["homelab_dfir_tools"],
+            "roles": ["homelab.homelab_dfir_tools"],
         })
 
     # Tool servers go first so they're up before the agents try to enrol.
@@ -1453,9 +1453,18 @@ def missing_roles(cfg):
                 needed.update(d.get("role") for d in role.get("depends_on") or [])
     needed = {n for n in needed if n and n.count(".") < 2}
     try:
-        installed = {r.get("name") for r in ludus_json("ansible", "role", "list") or []}
+        rows = ludus_json("ansible", "role", "list") or []
     except LudusError:
         return []
+    # Ludus lists a source's roles under its namespace ("homelab.homelab_minecraft"),
+    # while blueprints reference the bare role name ("homelab_minecraft"). Accept
+    # either form, so an installed namespaced role satisfies a bare requirement.
+    installed = set()
+    for r in rows:
+        name = r.get("name")
+        if name:
+            installed.add(name)
+            installed.add(name.rsplit(".", 1)[-1])
     return sorted(needed - installed)
 
 

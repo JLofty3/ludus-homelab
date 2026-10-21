@@ -15,7 +15,7 @@ ludus:
     cpus: 2
     linux: true
     roles:
-      - homelab_minecraft
+      - homelab.homelab_minecraft
     role_vars:
       minecraft_flavor: paper
       minecraft_version: latest

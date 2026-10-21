@@ -15,7 +15,7 @@ ludus:
     cpus: 2
     linux: true
     roles:
-      - homelab_samba
+      - homelab.homelab_samba
     role_vars:
       samba_share_name: share
       samba_share_dir: /srv/share
