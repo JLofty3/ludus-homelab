@@ -1041,6 +1041,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for s in states.values():
             counts[s] = counts.get(s, 0) + 1
         storage = None
+        cpu = None
+        uptime = None
+        running = None
         if pve_enabled():
             try:
                 pool = pve_vm_pool()
@@ -1051,9 +1054,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                "available": round((pool.get("avail") or 0) / gb, 1)}
             except ProxmoxError:
                 storage = None
+            try:
+                st = pve_node_status()
+                if st:
+                    info = st.get("cpuinfo") or {}
+                    la = st.get("loadavg") or []
+                    cpu = {"usage": round((st.get("cpu") or 0) * 100, 1),
+                           "cores": info.get("cpus") or info.get("cores"),
+                           "load1": round(float(la[0]), 2) if la else None}
+                    uptime = st.get("uptime")
+            except (ProxmoxError, ValueError, TypeError):
+                cpu = None
+            try:
+                qvms = CACHE.get("pve:qemu", 5, lambda: pve_request("GET", f"/nodes/{pve_node()}/qemu") or [])
+                running = sum(1 for v in qvms if v.get("status") == "running")
+            except ProxmoxError:
+                running = None
         self._json(200, {"node": pve_node(), "version": core.VERSION,
                          "memory": {"total": total, "available": avail}, "templates": counts,
-                         "storage": storage, "monitoring": pve_enabled(), "labs": len(ranges())})
+                         "storage": storage, "cpu": cpu, "uptime": uptime, "running_vms": running,
+                         "monitoring": pve_enabled(), "labs": len(ranges())})
 
     def api_lab_stats(self, user, id):
         self._json(200, lab_stats(id))

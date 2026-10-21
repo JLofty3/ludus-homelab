@@ -69,6 +69,8 @@
     cube: [["path", { d: "M12 2l8 4.5v9L12 20l-8-4.5v-9z" }], ["path", { d: "M12 2v18M4 6.5l8 4.5 8-4.5" }]],
     film: [["rect", { x: 3, y: 4, width: 18, height: 16, rx: 2 }], ["path", { d: "M7 4v16M17 4v16M3 9h4M17 9h4M3 15h4M17 15h4" }]],
     folder: [["path", { d: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" }]],
+    ram: [["rect", { x: 2, y: 8, width: 20, height: 8, rx: 1 }], ["path", { d: "M6 16v2.5M10 16v2.5M14 16v2.5M18 16v2.5M6.5 11h2M11 11h2M15.5 11h2" }]],
+    disk: [["rect", { x: 3, y: 5, width: 18, height: 14, rx: 2 }], ["circle", { cx: 12, cy: 12, r: 3.5 }], ["circle", { cx: 12, cy: 12, r: 1, fill: "currentColor", stroke: "none" }]],
   };
 
   function icon(name, cls) {
@@ -218,30 +220,54 @@
   function clearTimers() { state.timers.forEach(clearInterval); state.timers = []; state.templatePoll = null; }
 
   // ---------------------------------------------------------------- shell
+  const cpuMeter = h("div", { class: "host-mem", title: "CPU usage on the node" });
   const memMeter = h("div", { class: "host-mem", title: "Memory in use on the node" });
   const diskMeter = h("div", { class: "host-mem", title: "VM storage in use on the node" });
+  const vmStat = h("div", { class: "host-stat", title: "Running VMs on the node" });
+  const upStat = h("div", { class: "host-stat", title: "Node uptime" });
 
-  function fillMeter(el, glyph, freeLabel, usedPct) {
+  function fillMeter(el, glyph, label, usedPct) {
+    const pct = Math.min(100, Math.max(0, usedPct));
     el.replaceChildren(
       icon(glyph),
-      h("span", { text: freeLabel }),
-      h("div", { class: "meter", vars: { "--used": `${Math.min(100, Math.max(0, usedPct))}%` } }, h("span")),
+      h("span", { class: "hm-label", text: label }),
+      h("div", { class: "meter" + (pct >= 85 ? " hot" : pct >= 70 ? " warm" : ""), vars: { "--used": `${pct}%` } }, h("span")),
     );
+  }
+
+  function fillStat(el, glyph, value) {
+    if (value === null || value === undefined || value === "") { el.replaceChildren(); return; }
+    el.replaceChildren(icon(glyph), h("span", { class: "hm-label", text: String(value) }));
+  }
+
+  function fmtUptime(secs) {
+    if (!secs || secs < 0) return "";
+    const d = Math.floor(secs / 86400), hrs = Math.floor((secs % 86400) / 3600), mins = Math.floor((secs % 3600) / 60);
+    if (d) return `up ${d}d ${hrs}h`;
+    if (hrs) return `up ${hrs}h ${mins}m`;
+    return `up ${mins}m`;
   }
 
   async function refreshStatus() {
     try {
       const o = await api("GET", "/api/overview");
+      const c = o.cpu || {};
+      if (c.cores) {
+        const load = (c.load1 != null && c.load1 !== undefined) ? ` · load ${c.load1.toFixed(2)}` : "";
+        fillMeter(cpuMeter, "cpu", `${Math.round(c.usage || 0)}% CPU · ${c.cores}c${load}`, c.usage || 0);
+      } else { cpuMeter.replaceChildren(); }
       const m = o.memory || {};
       if (m.total) {
         const used = Math.max(0, m.total - (m.available || 0));
-        fillMeter(memMeter, "cpu", `${Math.round(m.available)} of ${Math.round(m.total)} GB RAM free`, (used / m.total) * 100);
+        fillMeter(memMeter, "ram", `${Math.round(m.available)} of ${Math.round(m.total)} GB RAM free`, (used / m.total) * 100);
       } else { memMeter.replaceChildren(); }
       const s = o.storage || {};
       if (s.total) {
         const usedS = Math.max(0, s.total - (s.available || 0));
-        fillMeter(diskMeter, "stack", `${Math.round(s.available)} of ${Math.round(s.total)} GB disk free`, (usedS / s.total) * 100);
+        fillMeter(diskMeter, "disk", `${Math.round(s.available)} of ${Math.round(s.total)} GB disk free`, (usedS / s.total) * 100);
       } else { diskMeter.replaceChildren(); }
+      fillStat(vmStat, "server", (o.running_vms != null) ? `${o.running_vms} VM${o.running_vms === 1 ? "" : "s"} running` : "");
+      fillStat(upStat, "clock", fmtUptime(o.uptime));
     } catch { /* the meters are a nicety */ }
   }
 
@@ -255,7 +281,7 @@
         link("#/build", "Build a lab", "build", "build"), link("#/labs", "Your labs", "labs", "grid"),
         link("#/templates", "Templates", "templates", "stack"), link("#/connect", "Connect", "connect", "connect"),
         link("#/updates", "Updates", "updates", "download")),
-      h("div", { class: "host-meters" }, memMeter, diskMeter),
+      h("div", { class: "host-meters" }, cpuMeter, memMeter, diskMeter, vmStat, upStat),
       themeToggle(),
       h("div", { class: "who" }, h("span", { text: state.user }),
         h("button", { class: "btn btn-quiet", type: "button", text: "Sign out", onclick: signOut })),

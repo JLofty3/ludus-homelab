@@ -367,11 +367,16 @@ details[open] > summary::before { transform: rotate(90deg); }
 .theme-toggle button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
 
 /* ---------- storage + memory meters share the host-mem look ---------- */
-.host-meters { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+.host-meters { display: flex; gap: 14px 18px; flex-wrap: wrap; align-items: center; margin-left: auto; }
 .host-meters .host-mem { margin-left: 0; }
-.host-meters .meter { width: 92px; }
-.host-mem .ico { color: var(--ink-2); }
-@media (max-width: 1020px) { .host-meters { display: none; } }
+.host-meters .host-mem, .host-meters .host-stat { font-size: 0.8rem; gap: 7px; }
+.host-meters .meter { width: 64px; }
+.host-stat { display: flex; align-items: center; gap: 7px; color: var(--ink-2); white-space: nowrap; }
+.host-stat .ico, .host-mem .ico { color: var(--ink-2); flex: none; }
+.host-mem .hm-label, .host-stat .hm-label { white-space: nowrap; }
+.host-mem .meter.warm span { background: var(--warn); }
+.host-mem .meter.hot span { background: var(--bad); }
+@media (max-width: 820px) { .host-meters { display: none; } }
 
 /* ---------- live stats panel ---------- */
 .stats { display: grid; gap: 0; }
