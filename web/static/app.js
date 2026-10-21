@@ -43,6 +43,8 @@
       h("div", { class: "progress" + (calm ? " calm" : "") }, h("span")),
       label ? h("p", { class: "muted", text: label }) : null);
   }
+  // A table that scrolls sideways on a narrow screen instead of overflowing it.
+  function scrollTable(...kids) { return h("div", { class: "table-wrap" }, h("table", {}, ...kids)); }
 
   // ---------------------------------------------------------------- icons
   // Original line glyphs, drawn on a 24x24 grid. Not any product's logo.
@@ -301,7 +303,7 @@
         link("#/updates", "Updates", "updates", "download")),
       h("div", { class: "host-meters" }, cpuMeter, memMeter, diskMeter, vmStat, upStat),
       themeToggle(),
-      h("div", { class: "who" }, h("span", { text: state.user }),
+      h("div", { class: "who" }, h("span", { class: "who-name", text: state.user }),
         h("button", { class: "btn btn-quiet", type: "button", text: "Sign out", onclick: signOut })),
     );
     app.replaceChildren(header, h("main", { id: "main" }, content));
@@ -909,7 +911,7 @@
       const canReset = lab.vms.some((v) => v.can_reset);
       const cols = canReset ? ["VM", "IP", "Power", "Password"] : ["VM", "IP", "Power"];
       vmsPanel.replaceChildren(h("h3", { text: "VMs" }), lab.vms.length
-        ? h("table", {}, h("thead", {}, h("tr", {}, cols.map((t) => h("th", { text: t })))),
+        ? scrollTable(h("thead", {}, h("tr", {}, cols.map((t) => h("th", { text: t })))),
           h("tbody", {}, lab.vms.map((v) => {
             const cells = [
               h("td", {}, h("span", { class: "vm-name" }, vmIcon(v),
@@ -935,7 +937,7 @@
 
       toolsPanel.hidden = !lab.tools.length;
       toolsPanel.replaceChildren(h("h3", { text: "Security tools" }),
-        h("table", {}, h("thead", {}, h("tr", {}, ["Tool", "Address", "Username", "Password"].map((t) => h("th", { text: t })))),
+        scrollTable(h("thead", {}, h("tr", {}, ["Tool", "Address", "Username", "Password"].map((t) => h("th", { text: t })))),
           h("tbody", {}, lab.tools.map((t) => h("tr", {}, h("td", { text: t.label }),
             h("td", {}, t.url.startsWith("https://") ? h("a", { href: t.url, target: "_blank", rel: "noopener", text: t.url }) : `RDP to ${t.ip}`),
             h("td", { text: t.username }),
@@ -968,7 +970,7 @@
       panel.replaceChildren(h("h3", { text: "Roll back to a snapshot" }));
       if (!r.snapshots.length) { panel.append(h("p", { class: "muted", text: "This lab has no snapshots yet." })); }
       else {
-        panel.append(h("table", {}, h("tbody", {}, r.snapshots.map((s) => h("tr", {},
+        panel.append(scrollTable(h("tbody", {}, r.snapshots.map((s) => h("tr", {},
           h("td", {}, h("b", { text: s.name }), s.description ? h("div", { class: "help", text: s.description }) : null),
           h("td", { class: "muted", text: `${plural(s.vms, "VM")}${s.ram ? ", with memory" : ""}` }),
           h("td", { class: "muted", text: s.time ? new Date(s.time * 1000).toLocaleString() : "" }),
@@ -1124,7 +1126,7 @@
         text: notBuilt.length ? `Build ${plural(notBuilt.length, "template")} that ${notBuilt.length === 1 ? "isn't" : "aren't"} built` : "Everything is built or building" });
       all.addEventListener("click", () => act(all, async () => { toast((await api("POST", "/api/templates/build", { all: true })).message); await draw(); }, "Starting"));
       table.replaceChildren(h("div", { class: "detail-head" }, h("h3", { text: "On this node" }), all),
-        h("table", {}, h("thead", {}, h("tr", {}, ["Operating system", "Template", "Status"].map((t) => h("th", { text: t })))),
+        scrollTable(h("thead", {}, h("tr", {}, ["Operating system", "Template", "Status"].map((t) => h("th", { text: t })))),
           h("tbody", {}, d.templates.map((t) => h("tr", {}, h("td", { text: t.label }), h("td", { class: "muted", text: t.template }),
             h("td", {}, h("span", { class: "state " + (t.state === "ready" ? "state-ready" : t.state === "building" ? "state-building" : "state-missing"),
               text: t.state === "ready" ? "Ready" : t.state === "building" ? "Building" : "Not built" })))))));
@@ -1166,7 +1168,7 @@
         h("p", { text: "Your labs list each VM's IP address. Windows: Remote Desktop, or download ready-made RDP files from the lab's page. Linux: SSH. Kali's desktop: https://<kali IP>:8444 in your browser." })),
       h("div", { class: "panel" },
         h("h3", { text: "Default logins" }),
-        h("table", {}, h("thead", {}, h("tr", {}, ["Machine", "Username", "Password"].map((t) => h("th", { text: t })))),
+        scrollTable(h("thead", {}, h("tr", {}, ["Machine", "Username", "Password"].map((t) => h("th", { text: t })))),
           h("tbody", {}, creds.map(([m, u, p]) => h("tr", {}, h("td", { text: m }), h("td", { text: u }), h("td", { text: p }))))),
         h("p", { class: "help", text: "Security tool logins (Kibana, Wazuh, Velociraptor) are on each lab's page. These passwords are deliberately weak: keep labs on their private networks." })),
     ));

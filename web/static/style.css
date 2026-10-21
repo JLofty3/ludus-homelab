@@ -475,11 +475,28 @@ details[open] > summary::before { transform: rotate(90deg); }
 }
 @media (max-width: 640px) {
   :root { --gutter: 16px; }
-  .topbar { padding: 10px 16px; gap: 12px; }
+  .topbar { padding: calc(9px + env(safe-area-inset-top)) 16px 9px; gap: 9px 12px; }
+  .brand-name { font-size: 1.15rem; }
+  .brand-node { display: none; }
+  /* nav becomes one swipeable row instead of wrapping into several lines */
+  .nav { order: 3; flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; gap: 2px;
+    margin: 0 -16px; padding: 2px 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { flex: none; }
+  .theme-toggle { order: 2; margin-left: auto; }
+  .who { order: 2; }
+  .who-name { display: none; }
+  main { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: calc(var(--gutter) + env(safe-area-inset-bottom)); }
   .map { grid-template-columns: minmax(0, 1fr); }
   .router { grid-row: auto; margin-bottom: 14px; }
   .auth-hero { display: none; }
+  .toolbar .btn { flex: 1 1 auto; }     /* lab actions fill the row and are easy to tap */
+  .toolbar .btn-danger { margin-left: 0; }
 }
+/* any table in a panel scrolls sideways rather than overflowing the screen */
+.table-wrap { overflow-x: auto; margin: 0 -2px; }
+.table-wrap table { min-width: 420px; }
 
 /* ---------- motion: one gentle reveal ---------- */
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

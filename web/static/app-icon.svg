@@ -1,0 +1,39 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#223040"/>
+      <stop offset="1" stop-color="#0d131a"/>
+    </linearGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd15c"/>
+      <stop offset="1" stop-color="#e8a600"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <!-- squircle background -->
+  <rect width="512" height="512" rx="114" fill="url(#bg)"/>
+
+  <!-- subtle network constellation -->
+  <g stroke="#3a4a5a" stroke-width="4" fill="#3a4a5a" opacity="0.75" stroke-linecap="round">
+    <line x1="150" y1="150" x2="256" y2="214"/>
+    <line x1="366" y1="150" x2="256" y2="214"/>
+    <line x1="150" y1="362" x2="256" y2="298"/>
+    <line x1="366" y1="362" x2="256" y2="298"/>
+    <circle cx="150" cy="150" r="13"/>
+    <circle cx="366" cy="150" r="13"/>
+    <circle cx="150" cy="362" r="13"/>
+    <circle cx="366" cy="362" r="13"/>
+  </g>
+
+  <!-- amber server / node at the centre -->
+  <g>
+    <rect x="178" y="186" width="156" height="140" rx="26" fill="url(#amber)"/>
+    <!-- two slot lines + an activity LED, cut in the slate colour -->
+    <rect x="204" y="222" width="104" height="13" rx="6.5" fill="#15202b"/>
+    <rect x="204" y="258" width="74" height="13" rx="6.5" fill="#15202b"/>
+    <circle cx="300" cy="264" r="9" fill="#2bd37e"/>
+  </g>
+</svg>

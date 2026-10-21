@@ -65,6 +65,17 @@ are stored hashed (PBKDF2-SHA256) in the node's data directory; nothing leaves
 your network. First time you sign in, a short welcome page sums up what's
 connected and points you at your first lab, service, or shared login.
 
+## On your phone
+
+The GUI is responsive and installs to a phone home screen. On the node's address
+in Safari (iOS) or Chrome (Android), use **Share -> Add to Home Screen**: it gets
+its own icon and opens full-screen like an app, so you can power labs on and off,
+watch a build, or check the node from the sofa.
+
+To reach it from *outside* your network — on cellular, away from home — you need
+a way into your LAN: a VPN (WireGuard or Tailscale are the usual homelab picks)
+or a port-forward. On your home Wi-Fi it just works at the node's address.
+
 ## OS versions
 
 You pick the version wherever it makes sense.

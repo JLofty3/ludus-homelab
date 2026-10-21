@@ -1050,6 +1050,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
         if full.endswith(".woff2"):
             ctype = "font/woff2"
+        elif full.endswith(".webmanifest"):
+            ctype = "application/manifest+json"
+        elif full.endswith(".svg"):
+            ctype = "image/svg+xml"
         if ctype.startswith("text/") or ctype in ("application/javascript",):
             ctype += "; charset=utf-8"
         with open(full, "rb") as fh:

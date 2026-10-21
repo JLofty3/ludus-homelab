@@ -1,0 +1,16 @@
+{
+  "name": "Lab builder",
+  "short_name": "Lab builder",
+  "description": "Spin up cyber-range labs and home services on your own Proxmox server.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e1419",
+  "theme_color": "#0e1419",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
