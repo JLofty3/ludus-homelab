@@ -17,7 +17,7 @@ import tempfile
 
 import yaml
 
-VERSION = "1.6.1"
+VERSION = "1.7.0"
 LUDUS = os.environ.get("LUDUS_BIN", "ludus")
 KEY_FILES = [p for p in (os.environ.get("LAB_KEY_FILE"), "/root/.config/ludus-lab/env", "/etc/ludus-lab/env") if p]
 DEFAULT_ROUTER_TEMPLATE = "debian-13-x64-server-template"
@@ -907,25 +907,26 @@ def _apply_service(cfg, o, role, role_vars, default_host):
 
 MC_DIFFICULTY = [("peaceful", "Peaceful"), ("easy", "Easy"), ("normal", "Normal"), ("hard", "Hard")]
 MC_GAMEMODE = [("survival", "Survival"), ("creative", "Creative"), ("adventure", "Adventure")]
-MC_FLAVOR = [("paper", "Paper - faster, supports plugins"), ("vanilla", "Vanilla - the official Mojang server")]
+MC_FLAVOR = [("paper", "Paper", "Faster, and supports plugins"),
+             ("vanilla", "Vanilla", "The official Mojang server")]
 
 
 def schema_minecraft(cfg):
     return [
         {"key": "flavor", "type": "select", "label": "Server type", "default": "paper", "choices": MC_FLAVOR,
-         "help": "Paper performs better and supports plugins; Vanilla is the stock Mojang server."},
+         "group": "Server", "help": "Paper performs better and supports plugins; Vanilla is the stock Mojang server."},
         {"key": "mc_version", "type": "text", "label": "Minecraft version", "default": "latest", "validate": "mcversion",
-         "help": 'A version like 1.21.4, or "latest" for the newest release at build time.'},
-        {"key": "hostname", "type": "text", "label": "Hostname", "default": "minecraft", "validate": "hostname"},
-        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 2, "max": 24, "default": 6,
+         "group": "Server", "help": 'A version like 1.21.4, or "latest" for the newest release at build time.'},
+        {"key": "hostname", "type": "text", "label": "Hostname", "default": "minecraft", "validate": "hostname", "group": "Server"},
+        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 2, "max": 24, "default": 6, "group": "Resources",
          "help": "Minecraft likes RAM; 6-8 GB is comfortable for a handful of players."},
-        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 8, "default": 2},
-        {"key": "max_players", "type": "int", "label": "Max players", "min": 1, "max": 100, "default": 10},
-        {"key": "difficulty", "type": "select", "label": "Difficulty", "default": "normal", "choices": MC_DIFFICULTY},
-        {"key": "gamemode", "type": "select", "label": "Default game mode", "default": "survival", "choices": MC_GAMEMODE},
+        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 8, "default": 2, "group": "Resources"},
+        {"key": "max_players", "type": "int", "label": "Max players", "min": 1, "max": 100, "default": 10, "group": "Gameplay"},
+        {"key": "difficulty", "type": "select", "label": "Difficulty", "default": "normal", "choices": MC_DIFFICULTY, "group": "Gameplay"},
+        {"key": "gamemode", "type": "select", "label": "Default game mode", "default": "survival", "choices": MC_GAMEMODE, "group": "Gameplay"},
         {"key": "motd", "type": "text", "label": "Server description", "default": "A Minecraft Server", "validate": "motd",
-         "help": "The line players see in their server list."},
-        {"key": "whitelist", "type": "bool", "label": "Whitelist only", "default": False,
+         "group": "Gameplay", "help": "The line players see in their server list."},
+        {"key": "whitelist", "type": "bool", "label": "Whitelist only", "default": False, "group": "Gameplay",
          "help": "On: only names you add can join. Off: anyone who can reach it (online-mode still checks real Mojang accounts)."},
     ]
 
@@ -961,15 +962,15 @@ def apply_jellyfin(cfg, o):
 
 def schema_samba(cfg):
     return [
-        {"key": "hostname", "type": "text", "label": "Hostname", "default": "fileshare", "validate": "hostname"},
-        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 1, "max": 8, "default": 2},
-        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 4, "default": 2},
+        {"key": "hostname", "type": "text", "label": "Hostname", "default": "fileshare", "validate": "hostname", "group": "Machine"},
+        {"key": "ram", "type": "int", "label": "RAM (GB)", "min": 1, "max": 8, "default": 2, "group": "Machine"},
+        {"key": "cpus", "type": "int", "label": "CPUs", "min": 1, "max": 4, "default": 2, "group": "Machine"},
         {"key": "share_name", "type": "text", "label": "Share name", "default": "share", "validate": "sharename",
-         "help": r"What the share is called on the network, e.g. \\fileshare\share."},
-        {"key": "share_dir", "type": "text", "label": "Share folder (on the VM)", "default": "/srv/share", "validate": "abspath"},
-        {"key": "smb_user", "type": "text", "label": "Username", "default": "share", "validate": "username"},
+         "group": "Share", "help": r"What the share is called on the network, e.g. \\fileshare\share."},
+        {"key": "share_dir", "type": "text", "label": "Share folder (on the VM)", "default": "/srv/share", "validate": "abspath", "group": "Share"},
+        {"key": "smb_user", "type": "text", "label": "Username", "default": "share", "validate": "username", "group": "Share"},
         {"key": "smb_password", "type": "password", "label": "Password", "default": "", "validate": "password",
-         "help": "Used to connect to the share. At least 8 characters."},
+         "group": "Share", "help": "Used to connect to the share. At least 8 characters."},
     ]
 
 

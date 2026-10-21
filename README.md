@@ -52,6 +52,19 @@ These are LAN/VPN services by default. To reach one from outside your network,
 forward its port on your router to the VM's IP (Minecraft `25565/tcp`, Jellyfin
 `8096/tcp`). Each service's page shows exactly how to connect once it's deployed.
 
+## Sharing it with others
+
+You sign in with your **Proxmox account** (root, or a Ludus admin user) — that's
+the admin, and it can do everything.
+
+To let family or friends use the builder without handing out your Proxmox
+password, open the **People** page and create a login for them. Those logins can
+build and manage labs and services, but can't manage other people, update the
+install, or reset the node — the destructive controls stay with you. Passwords
+are stored hashed (PBKDF2-SHA256) in the node's data directory; nothing leaves
+your network. First time you sign in, a short welcome page sums up what's
+connected and points you at your first lab, service, or shared login.
+
 ## OS versions
 
 You pick the version wherever it makes sense.

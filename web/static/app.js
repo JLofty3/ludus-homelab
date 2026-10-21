@@ -71,6 +71,11 @@
     folder: [["path", { d: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" }]],
     ram: [["rect", { x: 2, y: 8, width: 20, height: 8, rx: 1 }], ["path", { d: "M6 16v2.5M10 16v2.5M14 16v2.5M18 16v2.5M6.5 11h2M11 11h2M15.5 11h2" }]],
     disk: [["rect", { x: 3, y: 5, width: 18, height: 14, rx: 2 }], ["circle", { cx: 12, cy: 12, r: 3.5 }], ["circle", { cx: 12, cy: 12, r: 1, fill: "currentColor", stroke: "none" }]],
+    logo: [["rect", { x: 3, y: 4, width: 11, height: 16, rx: 2.5 }], ["path", { d: "M14 8.5h6M14 12h5M14 15.5h3" }],
+      ["circle", { cx: 7, cy: 8, r: 1.1, fill: "currentColor", stroke: "none" }], ["circle", { cx: 7, cy: 12, r: 1.1, fill: "currentColor", stroke: "none" }]],
+    check: [["path", { d: "M4.5 12.5l4.5 4.5L19.5 6.5" }]],
+    people: [["circle", { cx: 8, cy: 8, r: 2.6 }], ["circle", { cx: 16, cy: 8, r: 2.6 }],
+      ["path", { d: "M3.5 19v-1a4 4 0 014-4h1a4 4 0 013.4 1.9M12.6 15.9A4 4 0 0115.5 14h1a4 4 0 014 4v1" }]],
   };
 
   function icon(name, cls) {
@@ -207,7 +212,7 @@
 
   // ---------------------------------------------------------------- state
   const state = {
-    user: null, node: "", version: "",
+    user: null, node: "", version: "", admin: false, firstRun: false,
     catalog: null,
     build: { blueprint: null, options: {}, addons: [], dfir_template: null, ram_profile: "standard",
              range_id: "", name: "", idTouched: false, nameTouched: false },
@@ -275,11 +280,13 @@
     const link = (hash, label, key, glyph) => h("a", { href: hash, "aria-current": active === key ? "page" : false },
       icon(glyph), h("span", { text: label }));
     const header = h("header", { class: "topbar" },
-      h("div", { class: "brand" }, h("span", { class: "brand-name", text: "Lab builder" }),
-        h("span", { class: "brand-node", text: state.node })),
+      h("div", { class: "brand" }, icon("logo", "brand-logo"),
+        h("span", { class: "brand-name", text: "Lab builder" }),
+        state.node ? h("span", { class: "brand-node", text: state.node }) : null),
       h("nav", { class: "nav", "aria-label": "Sections" },
         link("#/build", "Build a lab", "build", "build"), link("#/labs", "Your labs", "labs", "grid"),
         link("#/templates", "Templates", "templates", "stack"), link("#/connect", "Connect", "connect", "connect"),
+        state.admin ? link("#/people", "People", "people", "people") : null,
         link("#/updates", "Updates", "updates", "download")),
       h("div", { class: "host-meters" }, cpuMeter, memMeter, diskMeter, vmStat, upStat),
       themeToggle(),
@@ -309,15 +316,13 @@
     const pass = h("input", { type: "password", id: "p", name: "password", autocomplete: "current-password", required: true });
     const err = h("p", { class: "error", role: "alert", text: message || "" });
     const submit = h("button", { class: "btn btn-build btn-wide", type: "submit", text: "Sign in" });
-    const form = h("form", { class: "reveal", "aria-labelledby": "signin-title" },
-      h("div", { class: "cables", "aria-hidden": "true" },
-        h("span", { vars: { "--c": "var(--cable-1)" } }), h("span", { vars: { "--c": "var(--cable-2)" } }),
-        h("span", { vars: { "--c": "var(--cable-tools)" } })),
-      h("h1", { id: "signin-title", text: "Lab builder" }),
-      h("p", { class: "muted", text: "Sign in with your Proxmox account: root, or your Ludus admin user." }),
+    const form = h("form", { class: "auth-card reveal", "aria-labelledby": "signin-title" },
+      h("h2", { id: "signin-title", text: "Sign in" }),
+      h("p", { class: "muted", text: "Use your Proxmox account — root, or your Ludus admin user." }),
       h("div", { class: "field" }, h("label", { for: "u", text: "Username" }), user),
       h("div", { class: "field" }, h("label", { for: "p", text: "Password" }), pass),
-      err, submit);
+      err, submit,
+      h("p", { class: "auth-foot", text: "Runs entirely on your own node · nothing leaves your network." }));
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       err.textContent = "";
@@ -330,10 +335,19 @@
         } catch (e) { err.textContent = e.message; pass.select(); }
       }, "Signing in");
     });
-    app.replaceChildren(h("div", { class: "signin" },
-      netArt(),
-      h("div", { class: "signin-top" }, themeToggle()),
-      form));
+    const point = (glyph, text) => h("div", { class: "auth-point" }, icon(glyph), h("span", { text }));
+    app.replaceChildren(h("div", { class: "auth" },
+      h("div", { class: "auth-top" }, themeToggle()),
+      h("section", { class: "auth-hero" },
+        netArt(),
+        h("div", { class: "auth-badge" }, icon("logo", "brand-logo"), h("span", { text: "Lab builder" })),
+        h("h1", { text: "Spin up labs and home services on your own server." }),
+        h("p", { class: "lead", text: "A console for your Proxmox box: build cyber-range labs, or stand up a Minecraft server, media library or file share — in a few clicks, all in one place." }),
+        h("div", { class: "auth-points" },
+          point("build", "Cyber-range labs — Active Directory, GOAD, Linux networks"),
+          point("cube", "Home services — Minecraft, Jellyfin and Samba"),
+          point("eye", "One console with full visibility of your node"))),
+      h("div", { class: "auth-form-wrap" }, form)));
     user.focus();
   }
 
@@ -341,8 +355,12 @@
   function route() {
     if (!state.user) return;
     clearTimers();
-    const hash = location.hash || "#/build";
+    let hash = location.hash;
+    if (!hash && state.firstRun) hash = "#/welcome";
+    if (!hash) hash = "#/build";
     const [, section, id] = hash.split("/");
+    if (section === "welcome") { viewSetup(); return; }
+    if (section === "people") { viewAccounts(); return; }
     if (section === "labs") viewLabs(id ? decodeURIComponent(id) : null);
     else if (section === "templates") viewTemplates();
     else if (section === "connect") viewConnect();
@@ -356,6 +374,7 @@
     try {
       const s = await api("GET", "/api/session");
       state.user = s.user; state.node = s.node; state.version = s.version;
+      state.admin = !!s.admin; state.firstRun = !!s.first_run;
     } catch { state.user = null; viewSignin(); return; }
     route();
   }
@@ -414,15 +433,24 @@
       ...(svcList.length ? [h("div", { class: "pick-group", text: "Services" }), ...svcList.map(optionBtn)] : []));
 
     // Step 2: lab settings
-    const settings = h("div", { class: "fields" });
+    const settings = h("div", { class: "settings-body" });
     const drawSettings = () => {
       settings.replaceChildren();
-      if (lab.note) settings.append(h("p", { class: "notice ok field-wide", text: lab.note }));
-      const fields = lab.fields || [];
-      if (!fields.length) settings.append(h("p", { class: "muted field-wide", text: "This lab has no settings to change. Add tooling below if you like." }));
-      for (const f of fields) {
-        if (f.show_if && !B.options[f.show_if]) continue;
-        settings.append(fieldControl(f, B.options, () => { if (f.type === "bool" || f.rerender) drawSettings(); update(); }));
+      if (lab.note) settings.append(h("p", { class: "notice ok", text: lab.note }));
+      const fields = (lab.fields || []).filter((f) => !(f.show_if && !B.options[f.show_if]));
+      if (!fields.length) { settings.append(h("p", { class: "muted", text: "This lab has no settings to change. Add tooling below if you like." })); return; }
+      const control = (f) => fieldControl(f, B.options, () => { if (f.type === "bool" || f.rerender) drawSettings(); update(); });
+      // Render consecutive fields that share a `group` under one quiet subhead;
+      // fields with no group fall into a single headless grid.
+      let i = 0;
+      while (i < fields.length) {
+        const g = fields[i].group || "";
+        const chunk = [];
+        while (i < fields.length && (fields[i].group || "") === g) { chunk.push(fields[i]); i += 1; }
+        const grid = h("div", { class: "fields" }, chunk.map(control));
+        settings.append(g
+          ? h("section", { class: "field-group" }, h("h3", { class: "field-group-head", text: g }), grid)
+          : h("section", { class: "field-group" }, grid));
       }
     };
     drawSettings();
@@ -523,7 +551,7 @@
       return h("div", { class: "field" }, h("span", { class: "field-label", id: `${id}-label`, text: f.label }),
         h("div", { class: "stepper", role: "group", "aria-labelledby": `${id}-label` }, minus, out, plus), help);
     }
-    if (f.type === "select" && f.choices.length <= 3) {
+    if (f.type === "select" && f.choices.length <= 2) {
       const name = `r-${f.key}`;
       return h("div", { class: "field" }, h("span", { class: "field-label", id: `${id}-label`, text: f.label }),
         h("div", { class: "segmented", role: "radiogroup", "aria-labelledby": `${id}-label` },
@@ -1231,7 +1259,7 @@
   async function viewUpdates() {
     const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
     shell("updates", h("div", { class: "detail" }, h("h1", {}, icon("download"), " Updates"),
-      panel, refreshPanel(), featureRequestPanel(), dangerPanel()));
+      panel, refreshPanel(), featureRequestPanel(), state.admin ? dangerPanel() : null));
     let u;
     try { u = await api("GET", "/api/updates"); }
     catch (e) { panel.replaceChildren(h("div", { class: "notice bad", text: e.message })); return; }
@@ -1247,7 +1275,9 @@
     } else if (u.git && u.latest) {
       rows.push(h("div", { class: "notice ok", text: `You're on the latest version (${u.latest}).` }));
     }
-    if (u.git) {
+    if (u.git && !state.admin) {
+      rows.push(h("p", { class: "help", text: "Your admin keeps this install up to date." }));
+    } else if (u.git) {
       rows.push(h("h3", { text: "Update" }));
       if (u.web_update) {
         const status = h("p", { class: "help update-status" });
@@ -1276,6 +1306,112 @@
           h("li", {}, "After that, ", h("code", { text: "sudo lab-update" }), " does everything.")));
     }
     panel.replaceChildren(...rows);
+  }
+
+  // ---------------------------------------------------------------- first run
+  async function viewSetup() {
+    clearTimers();
+    let ov = {}, cat = {};
+    try { ov = await api("GET", "/api/overview"); } catch { /* degrade gracefully */ }
+    try { cat = await api("GET", "/api/catalog"); } catch { /* degrade gracefully */ }
+    const labs = cat.labs || [];
+    const svcCount = labs.filter((l) => l.kind === "service").length;
+    const labCount = labs.filter((l) => l.kind !== "service").length;
+    const ready = (ov.templates || {}).ready || 0;
+    const cpu = ov.cpu || {}, mem = ov.memory || {};
+
+    const finish = async (hash) => {
+      try { await api("POST", "/api/setup/done", {}); } catch { /* best effort */ }
+      state.firstRun = false;
+      if (location.hash === (hash || "#/build")) route(); else location.hash = hash || "#/build";
+    };
+    const check = (ok, text) => h("div", { class: "ready-row" },
+      icon(ok ? "check" : "warning", ok ? "ready-ok" : "ready-warn"), h("span", { text }));
+    const startCard = (glyph, title, body, hash) => {
+      const card = h("button", { class: "start-card", type: "button" },
+        icon(glyph, "start-ico"),
+        h("span", { class: "start-text" }, h("span", { class: "start-title", text: title }),
+          h("span", { class: "start-body", text: body })));
+      card.addEventListener("click", () => finish(hash));
+      return card;
+    };
+    const nodeLine = cpu.cores
+      ? `Connected to ${state.node || "your node"} — ${cpu.cores} cores, ${Math.round(mem.total || 0)} GB RAM`
+      : `Connected to ${state.node || "your node"}`;
+
+    app.replaceChildren(h("div", { class: "setup" },
+      netArt(),
+      h("div", { class: "auth-top" }, themeToggle()),
+      h("section", { class: "setup-inner reveal" },
+        h("div", { class: "auth-badge" }, icon("logo", "brand-logo"), h("span", { text: "Lab builder" })),
+        h("h1", { class: "setup-title", text: "You're all set up." }),
+        h("p", { class: "lead", text: "Your node is connected and the catalogue is installed. Build a cyber-range lab to learn and break things safely, or stand up a home service for yourself and your family." }),
+        h("div", { class: "ready" },
+          check(true, nodeLine),
+          check(true, `Catalogue ready — ${labCount} labs and ${svcCount} services`),
+          check(ready > 0, ready > 0 ? `${ready} VM templates built and ready to use` : "Templates build the first time you need them")),
+        h("div", { class: "start-cards" },
+          startCard("build", "Build a lab", "Active Directory, GOAD or a segmented Linux network to practise on.", "#/build"),
+          startCard("cube", "Stand up a service", "A Minecraft server, Jellyfin media library or a file share.", "#/build")),
+        state.admin
+          ? h("p", { class: "setup-foot" }, "Setting this up for other people? ",
+              h("a", { href: "#/people", onclick: (e) => { e.preventDefault(); finish("#/people"); } }, "Create logins for family or friends"), ".")
+          : null,
+        h("button", { class: "btn btn-quiet setup-skip", type: "button", text: "Skip to the console",
+          onclick: () => finish("#/build") }))));
+  }
+
+  // ---------------------------------------------------------------- people
+  async function viewAccounts() {
+    if (!state.admin) { location.hash = "#/build"; return; }
+    const panel = h("div", { class: "panel" }, h("p", { class: "muted", text: "Loading..." }));
+    shell("people", h("div", { class: "detail" },
+      h("h1", {}, icon("people"), " People"),
+      h("p", { class: "muted", text: "Create a sign-in for family or friends so they can build and manage their own labs and services — without sharing your Proxmox password." }),
+      panel));
+
+    const load = async () => {
+      let data;
+      try { data = await api("GET", "/api/accounts"); }
+      catch (e) { panel.replaceChildren(h("div", { class: "notice bad", text: e.message })); return; }
+
+      const uname = h("input", { type: "text", id: "acc-user", autocomplete: "off", spellcheck: "false" });
+      const pass = h("input", { type: "password", id: "acc-pass", autocomplete: "new-password" });
+      const err = h("p", { class: "error" });
+      const addBtn = h("button", { class: "btn btn-build", type: "submit", text: "Create login" });
+      const form = h("form", { class: "account-new" },
+        h("div", { class: "field" }, h("label", { for: "acc-user", text: "Username" }), uname,
+          h("p", { class: "help", text: "Lowercase letters, digits, - and _." })),
+        h("div", { class: "field" }, h("label", { for: "acc-pass", text: "Password" }), pass,
+          h("p", { class: "help", text: "At least 8 characters." })),
+        h("div", { class: "account-actions" }, addBtn), err);
+      form.addEventListener("submit", (ev) => {
+        ev.preventDefault(); err.textContent = "";
+        act(addBtn, async () => {
+          try {
+            await api("POST", "/api/accounts", { username: uname.value.trim(), password: pass.value });
+            uname.value = ""; pass.value = ""; toast("Login created."); load();
+          } catch (e) { err.textContent = e.message; }
+        }, "Creating");
+      });
+
+      const rows = [h("h3", { text: "Add a login" }), form, h("h3", { text: "Sign-ins you've created" })];
+      if (!data.accounts.length) {
+        rows.push(h("p", { class: "muted", text: "None yet. Your own Proxmox admin account always works." }));
+      } else {
+        rows.push(h("ul", { class: "account-list" }, data.accounts.map((a) => {
+          const del = h("button", { class: "btn btn-danger btn-sm", type: "button", text: "Remove" });
+          del.addEventListener("click", () => act(del, async () => {
+            try { await api("DELETE", `/api/accounts/${encodeURIComponent(a.username)}`); toast(`Removed ${a.username}.`); load(); }
+            catch (e) { toast(e.message, "bad"); }
+          }, "Removing"));
+          return h("li", { class: "account-row" },
+            h("span", { class: "acc-id" }, icon("people", "acc-ico"), h("span", { class: "acc-name", text: a.username })), del);
+        })));
+      }
+      panel.replaceChildren(...rows);
+    };
+    load();
   }
 
   start();

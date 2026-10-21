@@ -190,13 +190,13 @@ def note_failure(ip):
         FAILURES[ip].append(time.time())
 
 
-def new_session(user):
+def new_session(user, admin=False):
     token = secrets.token_urlsafe(32)
     with SESSIONS_LOCK:
         now = time.time()
         for t in [t for t, s in SESSIONS.items() if s["expires"] < now]:
             del SESSIONS[t]
-        SESSIONS[token] = {"user": user, "expires": now + SESSION_TTL}
+        SESSIONS[token] = {"user": user, "admin": bool(admin), "expires": now + SESSION_TTL}
     return token
 
 
@@ -209,6 +209,99 @@ def session_user(token):
             SESSIONS.pop(token, None)
             return None
         return s["user"]
+
+
+def session_admin(token):
+    if not token:
+        return False
+    with SESSIONS_LOCK:
+        s = SESSIONS.get(token)
+        return bool(s and s["expires"] >= time.time() and s.get("admin"))
+
+
+# --------------------------------------------------------------------------
+# Local accounts: usernames the admin creates so family or friends can sign in
+# without the Proxmox password. Stored hashed (PBKDF2-SHA256) in the data dir.
+# The first-run flag lives here too, so a fresh install gets the setup wizard.
+# --------------------------------------------------------------------------
+LOCAL_USER_RE = re.compile(r"^[a-z][a-z0-9_-]{1,30}$")
+STATE_HOME = os.path.dirname(os.path.abspath(TMP_DIR))
+ACCOUNTS_FILE = os.path.join(STATE_HOME, "accounts.json")
+SETUP_FLAG = os.path.join(STATE_HOME, "setup-done")
+ACCOUNTS_LOCK = threading.Lock()
+
+
+def load_accounts():
+    try:
+        with open(ACCOUNTS_FILE) as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_accounts(accounts):
+    tmp = ACCOUNTS_FILE + ".new"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        json.dump(accounts, fh, indent=1)
+    os.replace(tmp, ACCOUNTS_FILE)
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 200000)
+    return {"salt": salt.hex(), "hash": dk.hex(), "iter": 200000}
+
+
+def verify_password(password, rec):
+    try:
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(rec["salt"]), int(rec.get("iter", 200000)))
+        return secrets.compare_digest(dk.hex(), rec["hash"])
+    except (KeyError, ValueError, TypeError):
+        return False
+
+
+def create_account(username, password):
+    username = str(username or "").strip().lower()
+    if not LOCAL_USER_RE.match(username):
+        raise ApiError(400, "Usernames are 2-31 characters: lowercase letters, digits, - and _, starting with a letter.")
+    if len(password or "") < 8:
+        raise ApiError(400, "Use a password of at least 8 characters.")
+    with ACCOUNTS_LOCK:
+        accounts = load_accounts()
+        if username in accounts or f"{username}@pam" in allowed_users():
+            raise ApiError(409, f"An account called {username} already exists.")
+        accounts[username] = {"password": hash_password(password), "created": int(time.time())}
+        save_accounts(accounts)
+    return {"username": username}
+
+
+def delete_account(username):
+    username = str(username or "").strip().lower()
+    with ACCOUNTS_LOCK:
+        accounts = load_accounts()
+        if username not in accounts:
+            raise ApiError(404, "No such account.")
+        del accounts[username]
+        save_accounts(accounts)
+    return {"username": username}
+
+
+def list_accounts():
+    return [{"username": u, "created": a.get("created")} for u, a in sorted(load_accounts().items())]
+
+
+def first_run():
+    return not os.path.exists(SETUP_FLAG)
+
+
+def mark_setup_done():
+    try:
+        with open(SETUP_FLAG, "w") as fh:
+            fh.write("done\n")
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -891,6 +984,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _user(self):
         return session_user(self._cookie(COOKIE))
 
+    def _is_admin(self):
+        return session_admin(self._cookie(COOKIE))
+
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY:
@@ -934,6 +1030,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._error(403, "Request blocked: it didn't come from this page.")
         self._api("POST", path)
 
+    def do_DELETE(self):
+        path = urllib.parse.urlparse(self.path).path
+        if not path.startswith("/api/"):
+            return self._error(404, "Not found.")
+        if not self._same_origin():
+            return self._error(403, "Request blocked: it didn't come from this page.")
+        self._api("DELETE", path)
+
     def _static(self, path):
         if path in ("/", "/index.html"):
             path = "/index.html"
@@ -955,6 +1059,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ("GET", r"/api/session", "session", False),
         ("POST", r"/api/login", "login", False),
         ("POST", r"/api/logout", "logout", False),
+        ("GET", r"/api/accounts", "accounts", True),
+        ("POST", r"/api/accounts", "accounts", True),
+        ("DELETE", r"/api/accounts/(?P<username>[^/]+)", "account_delete", True),
+        ("POST", r"/api/setup/done", "setup_done", True),
         ("GET", r"/api/overview", "overview", True),
         ("GET", r"/api/catalog", "catalog", True),
         ("POST", r"/api/plan", "plan", True),
@@ -1001,7 +1109,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def api_session(self, user):
         if not user:
             return self._error(401, "Sign in first.")
-        self._json(200, {"user": user, "version": core.VERSION, "node": socket.gethostname()})
+        admin = self._is_admin()
+        self._json(200, {"user": user, "admin": admin, "version": core.VERSION,
+                         "node": socket.gethostname(), "first_run": admin and first_run()})
 
     def api_login(self, user):
         ip = self.client_address[0]
@@ -1012,10 +1122,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         password = str(body.get("password") or "")
         if not username or not password:
             return self._error(400, "Enter your username and password.")
+        # A bare username that matches an account the admin created signs in locally.
+        bare = username.lower()
+        if "@" not in username and bare in load_accounts():
+            if verify_password(password, load_accounts()[bare].get("password") or {}):
+                with FAILURES_LOCK:
+                    FAILURES.pop(ip, None)
+                token = new_session(bare, admin=False)
+                return self._json(200, {"user": bare, "admin": False}, {"Set-Cookie": self._cookie_header(token, SESSION_TTL)})
+            note_failure(ip)
+            return self._error(401, "That username and password weren't accepted.")
+        # Otherwise it's the Proxmox admin path (root or a Ludus admin).
         full = username if "@" in username else f"{username}@pam"
         if full not in allowed_users():
             note_failure(ip)
-            return self._error(401, "Sign in with root or your Ludus admin account.")
+            return self._error(401, "Sign in with root, your Ludus admin account, or an account your admin set up.")
         try:
             accepted = proxmox_check(full, password)
         except ValueError as exc:
@@ -1025,8 +1146,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._error(401, "That username and password weren't accepted.")
         with FAILURES_LOCK:
             FAILURES.pop(ip, None)
-        token = new_session(full)
-        self._json(200, {"user": full}, {"Set-Cookie": self._cookie_header(token, SESSION_TTL)})
+        token = new_session(full, admin=True)
+        self._json(200, {"user": full, "admin": True}, {"Set-Cookie": self._cookie_header(token, SESSION_TTL)})
+
+    def api_accounts(self, user):
+        if not self._is_admin():
+            raise ApiError(403, "Only the admin account can manage sign-ins.")
+        if self.command == "POST":
+            body = self._body()
+            return self._json(200, create_account(body.get("username"), body.get("password")))
+        self._json(200, {"accounts": list_accounts()})
+
+    def api_account_delete(self, user, username):
+        if not self._is_admin():
+            raise ApiError(403, "Only the admin account can manage sign-ins.")
+        self._json(200, delete_account(urllib.parse.unquote(username)))
+
+    def api_setup_done(self, user):
+        mark_setup_done()
+        self._json(200, {"ok": True})
 
     def api_logout(self, user):
         token = self._cookie(COOKIE)
@@ -1085,12 +1223,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._json(200, update_info())
 
     def api_update(self, user):
+        if not self._is_admin():
+            raise ApiError(403, "Only the admin account can update this install.")
         self._json(200, trigger_update())
 
     def api_refresh(self, user):
         self._json(200, refresh_sources())
 
     def api_reset(self, user):
+        if not self._is_admin():
+            raise ApiError(403, "Only the admin account can reset the node.")
         body = self._body()
         self._json(200, reset_node(body.get("level"), body.get("confirm")))
 
